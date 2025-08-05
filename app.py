@@ -225,113 +225,94 @@ class ChunkProcessor:
     
     def process_content(self, content):
         """
-        Submit content to chunk.dejan.ai with combined spinner
-        and JSON-length stabilization detection.
+        Submit content to chunk.dejan.ai with explicit wait for valid JSON
+        in the copy-button's data-clipboard-text attribute.
         """
         max_retries = 2
         for attempt in range(max_retries):
             if not self.driver:
                 if not self.setup_driver():
                     return False, None, "Failed to initialize browser"
-            
+
             try:
-                logger.info(f"Attempt {attempt + 1}/{max_retries}: Navigating to chunk.dejan.ai...")
+                logger.info(f"Attempt {attempt+1}/{max_retries}: loading chunk.dejan.ai")
                 self.driver.get("https://chunk.dejan.ai/")
-                time.sleep(8)
+                time.sleep(8)  # allow Streamlit to render
                 wait = WebDriverWait(self.driver, 45)
-                
-                # Locate input field
-                input_element = None
-                selectors = [
+
+                # 1) find & fill textarea
+                input_el = None
+                for by, sel in [
                     (By.ID, "text_area_1"),
                     (By.CSS_SELECTOR, 'textarea[aria-label="Text to chunk:"]'),
                     (By.CSS_SELECTOR, 'textarea'),
-                ]
-                for sel_type, sel in selectors:
+                ]:
                     try:
-                        input_element = wait.until(EC.presence_of_element_located((sel_type, sel)))
+                        input_el = wait.until(EC.presence_of_element_located((by, sel)))
                         break
                     except TimeoutException:
-                        continue
-                if not input_element:
-                    raise TimeoutException("Could not find input field")
-                
-                # Send content
-                input_element.clear()
+                        pass
+                if not input_el:
+                    raise TimeoutException("Input field not found")
+                input_el.clear()
+                time.sleep(1)
+                input_el.send_keys(content[:3000])
                 time.sleep(2)
-                input_element.send_keys(content[:3000])
-                time.sleep(3)
-                
-                # Click submit
+
+                # 2) click “Generate” button
                 submit_btn = None
-                btn_selectors = [
+                for by, sel in [
                     (By.CSS_SELECTOR, '[data-testid="stBaseButton-secondary"]'),
                     (By.XPATH, "//button[contains(text(), 'Generate')]"),
                     (By.CSS_SELECTOR, 'button[kind="secondary"]'),
-                ]
-                for sel_type, sel in btn_selectors:
+                ]:
                     try:
-                        submit_btn = wait.until(EC.element_to_be_clickable((sel_type, sel)))
+                        submit_btn = wait.until(EC.element_to_be_clickable((by, sel)))
                         break
                     except TimeoutException:
-                        continue
+                        pass
                 if not submit_btn:
-                    raise TimeoutException("Could not find submit button")
+                    raise TimeoutException("Submit button not found")
                 submit_btn.click()
-                
-                # Wait for spinner appear/disappear
-                try:
-                    WebDriverWait(self.driver, 30).until(
-                        EC.presence_of_element_located((By.CSS_SELECTOR, '[data-testid="stSpinner"]'))
-                    )
-                    logger.info("Spinner appeared")
-                except TimeoutException:
-                    logger.warning("Spinner not detected")
-                try:
-                    WebDriverWait(self.driver, 180).until(
-                        EC.invisibility_of_element_located((By.CSS_SELECTOR, '[data-testid="stSpinner"]'))
-                    )
-                    logger.info("Spinner disappeared")
-                except TimeoutException:
-                    logger.warning("Spinner did not disappear in time")
-                
-                # Monitor JSON length until stable
-                logger.info("Monitoring JSON length for stability...")
-                prev_len = 0
-                stable = 0
-                selector = (By.CSS_SELECTOR, '[data-testid="stCodeCopyButton"]')
-                while stable < 3:
-                    copy_btn = wait.until(EC.presence_of_element_located(selector))
-                    text = copy_btn.get_attribute('data-clipboard-text') or ''
-                    curr_len = len(text)
-                    if curr_len > 0 and curr_len == prev_len:
-                        stable += 1
-                    else:
-                        stable = 0
-                        prev_len = curr_len
-                    logger.info(f"JSON length check {stable}/3: {curr_len}")
-                    time.sleep(1)
-                
-                # Final extraction
-                final_btn = self.driver.find_element(*selector)
-                json_output = final_btn.get_attribute('data-clipboard-text')
-                if json_output:
+
+                # 3) now wait until the copy-button’s attribute becomes valid JSON
+                locator = (By.CSS_SELECTOR, '[data-testid="stCodeCopyButton"]')
+
+                def json_ready(driver):
                     try:
-                        json.loads(json_output)
-                        return True, json_output, None
-                    except json.JSONDecodeError:
-                        return False, None, "Invalid JSON received"
-                else:
-                    return False, None, "No JSON output found"
-            
+                        btn = driver.find_element(*locator)
+                        txt = btn.get_attribute('data-clipboard-text') or ""
+                        txt = txt.strip()
+                        if txt.startswith('{') and txt.endswith('}'):
+                            import json
+                            json.loads(txt)
+                            return True
+                    except Exception:
+                        pass
+                    return False
+
+                logger.info("Waiting for JSON to become ready on the copy button…")
+                WebDriverWait(self.driver, 180, poll_frequency=1).until(json_ready)
+                logger.info("Valid JSON detected!")
+
+                # 4) extract & validate final JSON
+                btn = self.driver.find_element(*locator)
+                json_output = btn.get_attribute('data-clipboard-text')
+                try:
+                    json.loads(json_output)
+                    return True, json_output, None
+                except json.JSONDecodeError:
+                    return False, None, "Invalid JSON after wait"
+
             except Exception as e:
-                logger.warning(f"Error on attempt {attempt + 1}: {e}")
+                logger.warning(f"Attempt #{attempt+1} failed: {e}")
                 if attempt == max_retries - 1:
                     return False, None, str(e)
                 self.cleanup()
                 time.sleep(5)
-        
+
         return False, None, "All retry attempts failed"
+
     
     def cleanup(self):
         """

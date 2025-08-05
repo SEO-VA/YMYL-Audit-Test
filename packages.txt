@@ -1,2 +1,1 @@
-# System packages needed for Selenium on Streamlit Cloud
 chromium-driver

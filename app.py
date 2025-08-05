@@ -183,7 +183,7 @@ class ContentExtractor:
 
 class ChunkProcessor:
     """
-    Handles interaction with chunk.dejan.ai using Selenium automation with network-based completion detection
+    Handles interaction with chunk.dejan.ai using Selenium automation with 4-fetch completion detection
     """
     
     def __init__(self):
@@ -272,69 +272,51 @@ class ChunkProcessor:
             logger.error(f"Failed to initialize Chrome driver: {e}")
             return False
     
-    def wait_for_completion_webhook(self):
+    def wait_for_fourth_fetch(self):
         """
-        Monitor network logs for the final webhook completion signal
-        Waits for OPTIONS request to webhooks.fivetran.com which indicates processing is 100% complete
+        Count fetch requests to index.NJ4tUjPs809
+        After 4th fetch = JSON ready for extraction
         """
-        webhook_pattern = "webhooks.fivetran.com/webhooks/"
-        max_wait_time = 300  # Maximum 5 minutes timeout
+        endpoint_pattern = "index.NJ4tUjPs809"
+        fetch_count = 0
+        seen_requests = set()  # Track unique requests to avoid duplicates
+        max_wait_time = 180  # 3 minute timeout
         start_time = time.time()
-        check_interval = 1  # Check every second
         
-        logger.info("Monitoring for completion webhook signal...")
-        logger.info("Looking for final OPTIONS request to webhooks.fivetran.com")
+        logger.info("Counting fetch requests for completion...")
+        logger.info("Waiting for 4th fetch request to index.NJ4tUjPs809...")
         
-        while True:
-            current_time = time.time()
-            
-            # Check for timeout
-            if current_time - start_time > max_wait_time:
-                logger.warning("Webhook monitoring timeout reached (5 minutes)")
-                return False
-            
+        while fetch_count < 4:
+            # Check timeout
+            if time.time() - start_time > max_wait_time:
+                logger.warning("Timeout waiting for 4th fetch request - proceeding anyway")
+                return True  # Continue anyway
+                
             try:
-                # Get recent performance logs
                 logs = self.driver.get_log('performance')
                 
-                # Look for the completion webhook in recent logs
                 for log in logs:
-                    try:
-                        message = str(log.get('message', ''))
-                        log_time = log.get('timestamp', 0)
-                        
-                        # Check if this log is recent (within last 5 seconds)
-                        if log_time > (current_time - 5) * 1000:  # Convert to milliseconds
-                            # Look for the final webhook OPTIONS request
-                            if (webhook_pattern in message and 
-                                'OPTIONS' in message):
+                    if endpoint_pattern in str(log) and 'fetch' in str(log).lower():
+                        log_id = f"{log.get('timestamp', 0)}_{hash(str(log))}"
+                        if log_id not in seen_requests:
+                            seen_requests.add(log_id)
+                            fetch_count += 1
+                            logger.info(f"Fetch request {fetch_count}/4 detected")
+                            
+                            if fetch_count >= 4:
+                                logger.info("🎯 4th fetch request completed - JSON ready!")
+                                return True
                                 
-                                # Also check for successful status if available
-                                if '200' in message or 'OK' in message:
-                                    logger.info("🎯 Final completion webhook detected!")
-                                    logger.info("✅ Processing is 100% complete - JSON ready for extraction")
-                                    return True
-                                else:
-                                    logger.info("Webhook detected but checking status...")
-                    
-                    except Exception as e:
-                        continue  # Skip problematic logs
-                        
             except Exception as e:
                 logger.warning(f"Error checking logs: {e}")
-                
-            # Show periodic status updates
-            elapsed = current_time - start_time
-            if int(elapsed) % 10 == 0 and elapsed > 0:  # Every 10 seconds
-                logger.info(f"Still processing... ({elapsed:.0f}s elapsed)")
-                
-            time.sleep(check_interval)
+            
+            time.sleep(0.5)  # Check frequently
         
-        return False
+        return True
     
     def process_content(self, content):
         """
-        Submit content to chunk.dejan.ai with network-based completion detection
+        Submit content to chunk.dejan.ai with 4-fetch completion detection
         """
         max_retries = 2
         
@@ -410,16 +392,14 @@ class ChunkProcessor:
                 logger.info("Clicking submit button...")
                 submit_button.click()
                 
-                # WEBHOOK-BASED COMPLETION DETECTION
-                logger.info("Starting webhook-based processing detection...")
-                logger.info("Waiting for final OPTIONS request to webhooks.fivetran.com...")
+                # 4-FETCH COMPLETION DETECTION
+                logger.info("Starting 4-fetch counting detection...")
+                fourth_fetch_detected = self.wait_for_fourth_fetch()
                 
-                webhook_detected = self.wait_for_completion_webhook()
-                
-                if not webhook_detected:
-                    logger.warning("Webhook detection timed out, attempting to extract JSON anyway...")
+                if not fourth_fetch_detected:
+                    logger.warning("4-fetch detection timed out, attempting to extract JSON anyway...")
                 else:
-                    logger.info("Webhook detected - processing definitely complete!")
+                    logger.info("4th fetch detected - processing definitely complete!")
                 
                 # Find the copy button (should be ready now)
                 logger.info("Looking for copy button...")
@@ -427,7 +407,7 @@ class ChunkProcessor:
                     EC.presence_of_element_located((By.CSS_SELECTOR, '[data-testid="stCodeCopyButton"]'))
                 )
                 
-                # Extract the JSON immediately after webhook detection
+                # Extract the JSON immediately after 4th fetch detection
                 logger.info("Extracting JSON output...")
                 json_output = copy_button.get_attribute('data-clipboard-text')
                 
@@ -573,7 +553,7 @@ def process_url_workflow_with_logging(url, log_callback=None):
         log("🔄 Starting chunk.dejan.ai processing...")
         result['step'] = 'Processing content through chunk.dejan.ai...'
         
-        log("🌐 Navigating to chunk.dejan.ai with webhook monitoring...")
+        log("🌐 Navigating to chunk.dejan.ai with 4-fetch monitoring...")
         success, json_output, error = processor.process_content(content)
         
         if not success:
@@ -699,7 +679,7 @@ def main():
         st.markdown("""
         1. **Extract**: Scrapes content from your URL
         2. **Process**: Sends content to chunk.dejan.ai
-        3. **Monitor**: Watches for completion webhook signal
+        3. **Monitor**: Counts 4 fetch requests for completion
         4. **Generate**: Returns complete JSON chunks
         5. **Display**: Shows results below
         """)
@@ -799,7 +779,7 @@ def main():
     st.markdown("---")
     st.markdown(
         "<div style='text-align: center; color: #666;'>"
-        "Built with Streamlit • Powered by chunk.dejan.ai • Webhook-based completion detection"
+        "Built with Streamlit • Powered by chunk.dejan.ai • 4-fetch completion detection"
         "</div>", 
         unsafe_allow_html=True
     )

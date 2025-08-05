@@ -23,6 +23,7 @@ import logging
 from urllib.parse import urlparse
 import threading
 from concurrent.futures import ThreadPoolExecutor
+import html  # For HTML entity decoding
 
 # Configure logging for debugging
 logging.basicConfig(level=logging.INFO)
@@ -409,16 +410,21 @@ class ChunkProcessor:
                 
                 # Extract the JSON immediately after 4th fetch detection
                 logger.info("Extracting JSON output...")
-                json_output = copy_button.get_attribute('data-clipboard-text')
+                json_output_raw = copy_button.get_attribute('data-clipboard-text')
                 
-                if json_output:
+                if json_output_raw:
+                    # IMPORTANT: Decode HTML entities from the clipboard text
+                    json_output = html.unescape(json_output_raw)
+                    logger.info(f"Raw JSON length: {len(json_output_raw)} characters")
+                    logger.info(f"Decoded JSON length: {len(json_output)} characters")
+                    
                     try:
                         json.loads(json_output)  # Validate JSON
                         logger.info("Successfully retrieved and validated JSON output")
-                        logger.info(f"JSON length: {len(json_output)} characters")
                         return True, json_output, None
                     except json.JSONDecodeError as e:
-                        logger.error(f"Invalid JSON received: {e}")
+                        logger.error(f"Invalid JSON after decoding: {e}")
+                        logger.error(f"First 200 chars of decoded JSON: {json_output[:200]}")
                         return False, None, "Invalid JSON received from chunk.dejan.ai"
                 else:
                     return False, None, "No JSON output found in copy button"

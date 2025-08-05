@@ -154,27 +154,31 @@ class ContentExtractor:
     
     def _get_inner_text(self, element):
         """
-        Get text equivalent to JavaScript innerText || textContent
+        Get text equivalent to JavaScript innerText || textContent with proper formatting
         
-        innerText preserves formatting and line breaks better than textContent
-        BeautifulSoup's get_text() with separator='\n' is closest to innerText
+        This preserves paragraph breaks and block structure like the original bookmarklet
         """
         if not element:
             return ''
         
         try:
-            # Try to mimic innerText behavior - preserves block-level formatting
+            # Get text with line breaks preserved (closest to innerText behavior)
             text = element.get_text(separator='\n', strip=True)
             
-            # Clean up excessive whitespace while preserving structure
-            lines = [line.strip() for line in text.split('\n')]
-            lines = [line for line in lines if line]  # Remove empty lines
+            # Clean up excessive line breaks but preserve paragraph structure
+            lines = text.split('\n')
+            cleaned_lines = []
             
-            # Join with spaces (similar to how innerText handles block elements)
-            return ' '.join(lines)
+            for line in lines:
+                line = line.strip()
+                if line:  # Only add non-empty lines
+                    cleaned_lines.append(line)
+            
+            # Join with single newlines to preserve paragraph breaks within sections
+            return '\n'.join(cleaned_lines)
             
         except:
-            # Fallback to textContent equivalent
+            # Fallback to simple text extraction
             return element.get_text(strip=True)
 
 class ChunkProcessor:

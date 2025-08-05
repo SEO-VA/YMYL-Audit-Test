@@ -305,7 +305,10 @@ class ChunkProcessor:
                             logger.info(f"Fetch request {fetch_count}/4 detected")
                             
                             if fetch_count >= 4:
-                                logger.info("🎯 4th fetch request completed - JSON ready!")
+                                logger.info("🎯 4th fetch request completed - waiting for JSON to fully populate...")
+                                # Small delay to ensure JSON is fully written to the copy button
+                                time.sleep(3)  # 3 second buffer after 4th fetch
+                                logger.info("Buffer complete - JSON should be ready!")
                                 return True
                                 
             except Exception as e:

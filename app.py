@@ -194,8 +194,9 @@ class ChunkProcessor:
                 # --- FIXED PART START ---
                 # Wait for spinner to disappear
                 try:
+                    # Wait for spinner element to finish (using data-testid)
                     WebDriverWait(self.driver, 180).until(
-                        EC.invisibility_of_element_located((By.CSS_SELECTOR, 'div.stSpinner'))
+                        EC.invisibility_of_element_located((By.CSS_SELECTOR, '[data-testid="stSpinner"]'))
                     )
                 except TimeoutException:
                     logger.warning("Spinner did not disappear in time")

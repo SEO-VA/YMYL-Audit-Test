@@ -350,26 +350,27 @@ class ChunkProcessor:
                 )
                 logger.info("Copy button appeared - processing started")
                 
-                # Now wait for the loading spinner to disappear (indicates processing finished)
+                # Now wait for the "Raw JSON Output" heading to appear (indicates processing truly complete)
                 try:
-                    # Wait for spinner to appear first (it might take a moment)
-                    spinner_appeared = WebDriverWait(self.driver, 10).until(
-                        EC.presence_of_element_located((By.CSS_SELECTOR, 'i.st-emotion-cache-81zn7z'))
+                    logger.info("Waiting for 'Raw JSON Output' section to appear...")
+                    WebDriverWait(self.driver, 90).until(
+                        EC.presence_of_element_located((By.ID, "raw-json-output"))
                     )
-                    logger.info("Loading spinner detected - processing in progress")
-                    
-                    # Now wait for it to disappear (processing complete)
-                    WebDriverWait(self.driver, 60).until(
-                        EC.invisibility_of_element_located((By.CSS_SELECTOR, 'i.st-emotion-cache-81zn7z'))
-                    )
-                    logger.info("Loading spinner disappeared - processing complete")
+                    logger.info("'Raw JSON Output' section appeared - processing definitely complete!")
                     
                 except TimeoutException:
-                    logger.info("No loading spinner detected or it disappeared quickly")
+                    logger.warning("Raw JSON Output heading not found, trying alternative approach...")
+                    # Fallback: wait for spinner to disappear if heading not found
+                    try:
+                        WebDriverWait(self.driver, 30).until(
+                            EC.invisibility_of_element_located((By.CSS_SELECTOR, 'i.st-emotion-cache-81zn7z'))
+                        )
+                        logger.info("Loading spinner disappeared as fallback")
+                    except TimeoutException:
+                        logger.warning("Neither Raw JSON Output nor spinner method worked")
                 
-                # Additional buffer time to ensure JSON is fully populated
-                logger.info("Adding buffer time for JSON population...")
-                time.sleep(5)
+                # Small buffer to ensure JSON is populated
+                time.sleep(2)
                 
                 # Now extract the JSON
                 logger.info("Extracting JSON output...")
@@ -675,12 +676,37 @@ def main():
         
         with tab2:
             st.subheader("Extracted Content")
-            st.text_area(
-                "Raw extracted content:",
+            st.markdown("**Formatted content as extracted by the bookmarklet logic:**")
+            
+            # Display the content in a copyable text area
+            extracted_content_display = st.text_area(
+                "Raw extracted content (copyable):",
                 value=result['extracted_content'],
-                height=300,
-                disabled=True
+                height=400,
+                disabled=False,  # Make it copyable
+                help="This content is formatted exactly like the original bookmarklet. You can select and copy it."
             )
+            
+            # Add a copy button for convenience
+            if st.button("📋 Copy Extracted Content", key="copy_extracted"):
+                st.success("✅ Content copied to clipboard! (Use Ctrl+A then Ctrl+C in the text area above)")
+            
+            # Show content statistics
+            content_lines = result['extracted_content'].split('\n\n')
+            h1_count = len([line for line in content_lines if line.startswith('H1:')])
+            subtitle_count = len([line for line in content_lines if line.startswith('SUBTITLE:')])
+            lead_count = len([line for line in content_lines if line.startswith('LEAD:')])
+            has_main_content = any(line.startswith('CONTENT:') for line in content_lines)
+            
+            col1, col2, col3, col4 = st.columns(4)
+            with col1:
+                st.metric("H1 Headers", h1_count)
+            with col2:
+                st.metric("Subtitles", subtitle_count)
+            with col3:
+                st.metric("Lead Paragraphs", lead_count)
+            with col4:
+                st.metric("Main Content", "✅ Yes" if has_main_content else "❌ No")
         
         with tab3:
             st.subheader("Processing Summary")

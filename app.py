@@ -316,17 +316,22 @@ def validate_url(url):
     except Exception as e:
         return False, f"Invalid URL: {str(e)}"
 
-def process_url_workflow(url):
+def process_url_workflow_with_logging(url, log_callback=None):
     """
-    Complete workflow function that handles the entire process
-    This runs in a separate thread to avoid blocking the UI
+    Complete workflow function with live logging updates
     
     Args:
         url (str): Source URL to process
+        log_callback (function): Function to call with log messages
         
     Returns:
         dict: Result containing success status and data/error information
     """
+    def log(message):
+        if log_callback:
+            log_callback(message)
+        logger.info(message)  # Also log to server logs
+    
     result = {
         'success': False,
         'url': url,
@@ -337,46 +342,79 @@ def process_url_workflow(url):
     }
     
     # Initialize processors
+    log("🚀 Initializing content extractor...")
     extractor = ContentExtractor()
+    
+    log("🤖 Initializing chunk processor...")
     processor = ChunkProcessor()
     
     try:
         # Step 1: Extract content from the source URL
+        log(f"🔍 Fetching content from: {url}")
         result['step'] = 'Extracting content from URL...'
         success, content, error = extractor.extract_content(url)
         
         if not success:
+            log(f"❌ Content extraction failed: {error}")
             result['error'] = f"Content extraction failed: {error}"
             return result
         
+        log(f"✅ Content extracted: {len(content)} characters")
+        
         # Validate that we got meaningful content
         if not content or content.strip() == 'No content found' or len(content.strip()) < 50:
+            log("⚠️ Insufficient content extracted")
             result['error'] = "Insufficient content extracted from URL. Please check if the URL contains readable content."
             return result
         
         result['extracted_content'] = content
+        log("📝 Content validation passed")
         
         # Step 2: Process content through chunk.dejan.ai
+        log("🔄 Starting chunk.dejan.ai processing...")
         result['step'] = 'Processing content through chunk.dejan.ai...'
+        
+        log("🌐 Navigating to chunk.dejan.ai...")
         success, json_output, error = processor.process_content(content)
         
         if not success:
+            log(f"❌ Chunk processing failed: {error}")
             result['error'] = f"Chunk processing failed: {error}"
             return result
         
+        log("✅ JSON chunks generated successfully!")
         result['json_output'] = json_output
         result['success'] = True
         result['step'] = 'Completed successfully!'
         
+        # Parse and log JSON stats
+        try:
+            json_data = json.loads(json_output)
+            if 'big_chunks' in json_data:
+                big_chunks = len(json_data['big_chunks'])
+                total_small = sum(len(chunk.get('small_chunks', [])) for chunk in json_data['big_chunks'])
+                log(f"📊 Generated {big_chunks} big chunks, {total_small} small chunks")
+        except:
+            pass
+        
         return result
         
     except Exception as e:
+        log(f"💥 Unexpected error: {str(e)}")
         result['error'] = f"Unexpected error in workflow: {str(e)}"
         return result
     
     finally:
         # Always cleanup browser resources
+        log("🧹 Cleaning up browser resources...")
         processor.cleanup()
+        log("✅ Cleanup completed")
+
+def process_url_workflow(url):
+    """
+    Original workflow function for backward compatibility
+    """
+    return process_url_workflow_with_logging(url)
 
 def main():
     """
@@ -412,18 +450,31 @@ def main():
                 st.error(error_msg)
                 return
             
-            # Show processing status
+            # Show processing status with detailed logging
             with st.spinner("Processing your request..."):
-                # Create progress placeholder
+                # Create progress and logging placeholders
                 progress_placeholder = st.empty()
                 status_placeholder = st.empty()
+                log_placeholder = st.empty()
                 
-                # Process the URL (this runs synchronously but shows progress)
+                # Initialize logging container
+                log_container = st.container()
+                with log_container:
+                    st.subheader("📋 Processing Log")
+                    log_messages = []
+                
+                # Process the URL with live updates
                 progress_placeholder.progress(0.1)
                 status_placeholder.info("🔍 Validating URL and starting extraction...")
                 
-                # Run the workflow
-                result = process_url_workflow(url)
+                # Run the workflow with logging callback
+                def log_callback(message):
+                    log_messages.append(f"• {message}")
+                    with log_placeholder.container():
+                        for msg in log_messages[-10:]:  # Show last 10 messages
+                            st.text(msg)
+                
+                result = process_url_workflow_with_logging(url, log_callback)
                 
                 # Update progress based on results
                 if result['success']:

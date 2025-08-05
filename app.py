@@ -451,7 +451,9 @@ def main():
         st.info("💡 **Tip**: Works best with articles, blog posts, and structured content")
     
     # Results display section
-    if 'latest_result' in st.session_state and st.session_state['latest_result']['success']:
+    if ('latest_result' in st.session_state and 
+        st.session_state['latest_result'] is not None and 
+        st.session_state['latest_result'].get('success', False)):
         result = st.session_state['latest_result']
         
         st.markdown("---")
@@ -517,7 +519,7 @@ def main():
         unsafe_allow_html=True
     )
 
-# Session state initialization
+# Session state initialization - ensure proper initialization
 if 'latest_result' not in st.session_state:
     st.session_state['latest_result'] = None
 

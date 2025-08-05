@@ -45,7 +45,9 @@ class ContentExtractor:
         # Configure requests session with proper headers to avoid blocking
         self.session = requests.Session()
         self.session.headers.update({
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) '
+                          'AppleWebKit/537.36 (KHTML, like Gecko) '
+                          'Chrome/91.0.4472.124 Safari/537.36',
             'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
             'Accept-Language': 'en-US,en;q=0.5',
             'Accept-Encoding': 'gzip, deflate',
@@ -80,32 +82,25 @@ class ContentExtractor:
             # Extract H1 elements - EXACT bookmarklet logic
             h1_elements = soup.find_all('h1')
             for h1 in h1_elements:
-                # Use innerText equivalent (get_text with strip) || textContent equivalent  
                 text = self._get_inner_text(h1)
                 if text.strip():
                     content_parts.append(f'H1: {text.strip()}')
             
             # Extract subtitles with EXACT bookmarklet logic
-            # '.sub-title,.subtitle,[class*="sub-title"],[class*="subtitle"]'
             subtitle_selectors = '.sub-title,.subtitle,[class*="sub-title"],[class*="subtitle"]'
             subtitles = soup.select(subtitle_selectors)
-            
             for subtitle in subtitles:
-                # Check EXACT condition: className.includes('d-block') || closest('.d-block')
                 class_names = ' '.join(subtitle.get('class', []))
                 has_d_block = 'd-block' in class_names
                 closest_d_block = subtitle.find_parent(class_='d-block') is not None
-                
                 if has_d_block or closest_d_block:
                     text = self._get_inner_text(subtitle)
                     if text.strip():
                         content_parts.append(f'SUBTITLE: {text.strip()}')
             
             # Extract lead paragraphs - EXACT bookmarklet logic
-            # '.lead,[class*="lead"]'
             lead_selectors = '.lead,[class*="lead"]'
             leads = soup.select(lead_selectors)
-            
             for lead in leads:
                 text = self._get_inner_text(lead)
                 if text.strip():
@@ -113,12 +108,11 @@ class ContentExtractor:
             
             # Extract main content - EXACT bookmarklet logic
             if main_container:
-                # Use innerText || textContent || '' equivalent
                 main_text = self._get_inner_text(main_container) or ''
                 if main_text.strip():
                     content_parts.append(f'CONTENT: {main_text.strip()}')
             
-            # Join all content parts - EXACT bookmarklet logic
+            # Join all content parts
             final_content = '\n\n'.join(content_parts) if content_parts else 'No content found'
             
             return True, final_content, None
@@ -131,59 +125,36 @@ class ContentExtractor:
     def _find_main_container_exact(self, soup):
         """
         Find main content container using EXACT bookmarklet logic
-        
-        var a=document.querySelector('article')||document.querySelector('main')||document.querySelector('.content')||document.querySelector('#content')||document.querySelector('[role="main"]');
-        if(!a){var p=document.querySelectorAll('p');if(p.length>3)a=p[0].parentElement;}
-        if(!a)a=document.body;
         """
-        # Try selectors in exact order from bookmarklet
         selectors = ['article', 'main', '.content', '#content', '[role="main"]']
-        
         for selector in selectors:
             container = soup.select_one(selector)
             if container:
                 return container
         
-        # Fallback: if no container found, check paragraph logic
         paragraphs = soup.find_all('p')
         if len(paragraphs) > 3:
             return paragraphs[0].parent
         
-        # Final fallback: document.body equivalent
         return soup.find('body')
     
     def _get_inner_text(self, element):
         """
         Get text equivalent to JavaScript innerText || textContent with proper formatting
-        
-        This preserves paragraph breaks and block structure like the original bookmarklet
         """
         if not element:
             return ''
-        
         try:
-            # Get text with line breaks preserved (closest to innerText behavior)
             text = element.get_text(separator='\n', strip=True)
-            
-            # Clean up excessive line breaks but preserve paragraph structure
-            lines = text.split('\n')
-            cleaned_lines = []
-            
-            for line in lines:
-                line = line.strip()
-                if line:  # Only add non-empty lines
-                    cleaned_lines.append(line)
-            
-            # Join with single newlines to preserve paragraph breaks within sections
-            return '\n'.join(cleaned_lines)
-            
+            lines = [ln.strip() for ln in text.split('\n') if ln.strip()]
+            return '\n'.join(lines)
         except:
-            # Fallback to simple text extraction
             return element.get_text(strip=True)
 
 class ChunkProcessor:
     """
-    Handles interaction with chunk.dejan.ai using Selenium automation with spinner detection
+    Handles interaction with chunk.dejan.ai using Selenium automation
+    and combined spinner + JSON-length stabilization detection.
     """
     
     def __init__(self):
@@ -192,24 +163,19 @@ class ChunkProcessor:
     
     def setup_driver(self):
         """
-        Initialize Chrome WebDriver with ultra-stable settings for Streamlit Cloud
+        Initialize Chrome WebDriver with ultra-stable settings for Streamlit Cloud.
         """
         try:
-            # Configure Chrome options with maximum stability for containerized environments
             chrome_options = Options()
-            
-            # Core headless settings
-            chrome_options.add_argument('--headless=new')  # Use new headless mode
+            chrome_options.add_argument('--headless=new')
             chrome_options.add_argument('--no-sandbox')
             chrome_options.add_argument('--disable-dev-shm-usage')
             chrome_options.add_argument('--disable-gpu')
-            
-            # Memory and stability optimizations
             chrome_options.add_argument('--disable-web-security')
             chrome_options.add_argument('--disable-features=VizDisplayCompositor')
             chrome_options.add_argument('--disable-extensions')
             chrome_options.add_argument('--disable-plugins')
-            chrome_options.add_argument('--disable-images')  # Faster loading
+            chrome_options.add_argument('--disable-images')
             chrome_options.add_argument('--disable-background-timer-throttling')
             chrome_options.add_argument('--disable-backgrounding-occluded-windows')
             chrome_options.add_argument('--disable-renderer-backgrounding')
@@ -224,113 +190,131 @@ class ChunkProcessor:
             chrome_options.add_argument('--mute-audio')
             chrome_options.add_argument('--no-first-run')
             chrome_options.add_argument('--safebrowsing-disable-auto-update')
-            chrome_options.add_argument('--single-process')  # Run in single process mode
+            chrome_options.add_argument('--single-process')
             chrome_options.add_argument('--disable-default-apps')
-            
-            # Window and display settings
-            chrome_options.add_argument('--window-size=1280,720')  # Smaller window
+            chrome_options.add_argument('--window-size=1280,720')
             chrome_options.add_argument('--start-maximized')
-            
-            # Memory limits
             chrome_options.add_argument('--max_old_space_size=2048')
             chrome_options.add_argument('--memory-pressure-off')
-            
-            # Disable logging that might cause issues
             chrome_options.add_argument('--disable-logging')
             chrome_options.add_argument('--log-level=3')
             chrome_options.add_argument('--silent')
+            chrome_options.add_argument(
+                '--user-agent=Mozilla/5.0 (X11; Linux x86_64) '
+                'AppleWebKit/537.36 (KHTML, like Gecko) '
+                'Chrome/120.0.0.0 Safari/537.36'
+            )
             
-            # Set user agent
-            chrome_options.add_argument('--user-agent=Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36')
-            
-            # Initialize the WebDriver with error handling
             try:
                 self.driver = webdriver.Chrome(options=chrome_options)
-            except Exception as e:
-                logger.error(f"Failed with advanced options, trying basic setup: {e}")
-                # Fallback to basic options
+            except Exception:
                 basic_options = Options()
                 basic_options.add_argument('--headless')
                 basic_options.add_argument('--no-sandbox')
                 basic_options.add_argument('--disable-dev-shm-usage')
                 self.driver = webdriver.Chrome(options=basic_options)
             
-            # Set timeouts
             self.driver.set_page_load_timeout(60)
             self.driver.implicitly_wait(15)
-            
             logger.info("Chrome WebDriver initialized successfully")
             return True
-            
+        
         except WebDriverException as e:
             logger.error(f"Failed to initialize Chrome driver: {e}")
             return False
     
- def process_content(self, content):
+    def process_content(self, content):
         """
-        Submit content to chunk.dejan.ai with combined spinner and JSON-length stabilization detection
+        Submit content to chunk.dejan.ai with combined spinner
+        and JSON-length stabilization detection.
         """
         max_retries = 2
         for attempt in range(max_retries):
             if not self.driver:
                 if not self.setup_driver():
                     return False, None, "Failed to initialize browser"
+            
             try:
                 logger.info(f"Attempt {attempt + 1}/{max_retries}: Navigating to chunk.dejan.ai...")
                 self.driver.get("https://chunk.dejan.ai/")
                 time.sleep(8)
                 wait = WebDriverWait(self.driver, 45)
-
-                # Find and fill input field (unchanged)
-                # ...
-                submit_button.click()
-
-                # Wait for spinner to appear
+                
+                # Locate input field
+                input_element = None
+                selectors = [
+                    (By.ID, "text_area_1"),
+                    (By.CSS_SELECTOR, 'textarea[aria-label="Text to chunk:"]'),
+                    (By.CSS_SELECTOR, 'textarea'),
+                ]
+                for sel_type, sel in selectors:
+                    try:
+                        input_element = wait.until(EC.presence_of_element_located((sel_type, sel)))
+                        break
+                    except TimeoutException:
+                        continue
+                if not input_element:
+                    raise TimeoutException("Could not find input field")
+                
+                # Send content
+                input_element.clear()
+                time.sleep(2)
+                input_element.send_keys(content[:3000])
+                time.sleep(3)
+                
+                # Click submit
+                submit_btn = None
+                btn_selectors = [
+                    (By.CSS_SELECTOR, '[data-testid="stBaseButton-secondary"]'),
+                    (By.XPATH, "//button[contains(text(), 'Generate')]"),
+                    (By.CSS_SELECTOR, 'button[kind="secondary"]'),
+                ]
+                for sel_type, sel in btn_selectors:
+                    try:
+                        submit_btn = wait.until(EC.element_to_be_clickable((sel_type, sel)))
+                        break
+                    except TimeoutException:
+                        continue
+                if not submit_btn:
+                    raise TimeoutException("Could not find submit button")
+                submit_btn.click()
+                
+                # Wait for spinner appear/disappear
                 try:
                     WebDriverWait(self.driver, 30).until(
                         EC.presence_of_element_located((By.CSS_SELECTOR, '[data-testid="stSpinner"]'))
                     )
-                    logger.info("Processing spinner appeared - chunking started!")
+                    logger.info("Spinner appeared")
                 except TimeoutException:
-                    logger.warning("Spinner not detected, continuing anyway...")
-
-                # Wait for spinner to disappear
+                    logger.warning("Spinner not detected")
                 try:
                     WebDriverWait(self.driver, 180).until(
                         EC.invisibility_of_element_located((By.CSS_SELECTOR, '[data-testid="stSpinner"]'))
                     )
-                    logger.info("Spinner disappeared - chunking likely complete")
+                    logger.info("Spinner disappeared")
                 except TimeoutException:
                     logger.warning("Spinner did not disappear in time")
-
-                # New: Monitor JSON length until stable
+                
+                # Monitor JSON length until stable
                 logger.info("Monitoring JSON length for stability...")
-                copy_selector = (By.CSS_SELECTOR, '[data-testid="stCodeCopyButton"]')
                 prev_len = 0
-                stable_count = 0
-                # require 3 consecutive checks with same length
-                while stable_count < 3:
-                    try:
-                        copy_btn = wait.until(
-                            EC.presence_of_element_located(copy_selector)
-                        )
-                        json_text = copy_btn.get_attribute('data-clipboard-text') or ''
-                        curr_len = len(json_text)
-                        if curr_len > 0 and curr_len == prev_len:
-                            stable_count += 1
-                        else:
-                            stable_count = 0
-                            prev_len = curr_len
-                        logger.info(f"JSON length check #{stable_count + 1}: {curr_len} chars")
-                        time.sleep(1)
-                    except Exception:
-                        break
-
-                # Final retrieval
-                copy_btn = self.driver.find_element(*copy_selector)
-                json_output = copy_btn.get_attribute('data-clipboard-text')
-
-                # Validate JSON
+                stable = 0
+                selector = (By.CSS_SELECTOR, '[data-testid="stCodeCopyButton"]')
+                while stable < 3:
+                    copy_btn = wait.until(EC.presence_of_element_located(selector))
+                    text = copy_btn.get_attribute('data-clipboard-text') or ''
+                    curr_len = len(text)
+                    if curr_len > 0 and curr_len == prev_len:
+                        stable += 1
+                    else:
+                        stable = 0
+                        prev_len = curr_len
+                    logger.info(f"JSON length check {stable}/3: {curr_len}")
+                    time.sleep(1)
+                
+                # Final extraction
+                final_btn = self.driver.find_element(*selector)
+                json_output = final_btn.get_attribute('data-clipboard-text')
                 if json_output:
                     try:
                         json.loads(json_output)
@@ -339,68 +323,48 @@ class ChunkProcessor:
                         return False, None, "Invalid JSON received"
                 else:
                     return False, None, "No JSON output found"
-
+            
             except Exception as e:
                 logger.warning(f"Error on attempt {attempt + 1}: {e}")
                 if attempt == max_retries - 1:
                     return False, None, str(e)
                 self.cleanup()
                 time.sleep(5)
-                continue
+        
         return False, None, "All retry attempts failed"
     
     def cleanup(self):
         """
-        Clean up browser resources
+        Clean up browser resources.
         """
         if self.driver:
             try:
                 self.driver.quit()
             except:
-                pass  # Ignore cleanup errors
+                pass
 
 def validate_url(url):
     """
     Validate that the provided URL is properly formatted and accessible
-    
-    Args:
-        url (str): URL to validate
-        
-    Returns:
-        tuple: (is_valid: bool, error_message: str)
     """
     try:
-        # Parse the URL to check its structure
         parsed = urlparse(url)
-        
-        # Check if URL has scheme and netloc (domain)
         if not parsed.scheme or not parsed.netloc:
             return False, "Invalid URL format. Please include http:// or https://"
-        
-        # Check if scheme is http or https
         if parsed.scheme not in ['http', 'https']:
             return False, "URL must use http:// or https://"
-        
         return True, None
-        
     except Exception as e:
         return False, f"Invalid URL: {str(e)}"
 
 def process_url_workflow_with_logging(url, log_callback=None):
     """
     Complete workflow function with live logging updates
-    
-    Args:
-        url (str): Source URL to process
-        log_callback (function): Function to call with log messages
-        
-    Returns:
-        dict: Result containing success status and data/error information
     """
     def log(message):
         if log_callback:
             log_callback(message)
-        logger.info(message)  # Also log to server logs
+        logger.info(message)
     
     result = {
         'success': False,
@@ -411,27 +375,21 @@ def process_url_workflow_with_logging(url, log_callback=None):
         'step': 'Starting...'
     }
     
-    # Initialize processors
     log("🚀 Initializing content extractor...")
     extractor = ContentExtractor()
-    
     log("🤖 Initializing chunk processor...")
     processor = ChunkProcessor()
     
     try:
-        # Step 1: Extract content from the source URL
         log(f"🔍 Fetching content from: {url}")
         result['step'] = 'Extracting content from URL...'
         success, content, error = extractor.extract_content(url)
-        
         if not success:
             log(f"❌ Content extraction failed: {error}")
             result['error'] = f"Content extraction failed: {error}"
             return result
         
         log(f"✅ Content extracted: {len(content)} characters")
-        
-        # Validate that we got meaningful content
         if not content or content.strip() == 'No content found' or len(content.strip()) < 50:
             log("⚠️ Insufficient content extracted")
             result['error'] = "Insufficient content extracted from URL. Please check if the URL contains readable content."
@@ -440,13 +398,9 @@ def process_url_workflow_with_logging(url, log_callback=None):
         result['extracted_content'] = content
         log("📝 Content validation passed")
         
-        # Step 2: Process content through chunk.dejan.ai
         log("🔄 Starting chunk.dejan.ai processing...")
         result['step'] = 'Processing content through chunk.dejan.ai...'
-        
-        log("🌐 Navigating to chunk.dejan.ai...")
         success, json_output, error = processor.process_content(content)
-        
         if not success:
             log(f"❌ Chunk processing failed: {error}")
             result['error'] = f"Chunk processing failed: {error}"
@@ -457,7 +411,6 @@ def process_url_workflow_with_logging(url, log_callback=None):
         result['success'] = True
         result['step'] = 'Completed successfully!'
         
-        # Parse and log JSON stats
         try:
             json_data = json.loads(json_output)
             if 'big_chunks' in json_data:
@@ -475,35 +428,25 @@ def process_url_workflow_with_logging(url, log_callback=None):
         return result
     
     finally:
-        # Always cleanup browser resources
         log("🧹 Cleaning up browser resources...")
         processor.cleanup()
         log("✅ Cleanup completed")
 
 def process_url_workflow(url):
-    """
-    Original workflow function for backward compatibility
-    """
     return process_url_workflow_with_logging(url)
 
 def main():
     """
     Main Streamlit application interface
     """
-    # App header with styling
     st.title("🔄 Content Processor")
     st.markdown("**Automatically extract content from websites and generate JSON chunks**")
     
-    # Debug mode toggle
     debug_mode = st.sidebar.checkbox("🐛 Debug Mode", help="Show detailed processing logs")
-    
     st.markdown("---")
-    
-    # Create two columns for better layout
     col1, col2 = st.columns([2, 1])
     
     with col1:
-        # URL input section
         st.subheader("📝 Input URL")
         url = st.text_input(
             "Enter the URL to process:",
@@ -511,157 +454,110 @@ def main():
             help="Enter a complete URL including http:// or https://"
         )
         
-        # Process button
         if st.button("🚀 Process URL", type="primary", use_container_width=True):
-            
-            # Validate URL before processing
             if not url:
                 st.error("Please enter a URL to process")
                 return
-            
             is_valid, error_msg = validate_url(url)
             if not is_valid:
                 st.error(error_msg)
                 return
             
-            # Show processing status with detailed logging
             with st.spinner("Processing your request..."):
-                # Create progress and logging placeholders
                 progress_placeholder = st.empty()
                 status_placeholder = st.empty()
                 log_placeholder = st.empty()
                 
-                # Initialize logging container
                 log_container = st.container()
                 with log_container:
                     st.subheader("📋 Processing Log")
                     log_messages = []
                 
-                # Process the URL with live updates
-                progress_placeholder.progress(0.1)
-                status_placeholder.info("🔍 Validating URL and starting extraction...")
-                
-                # Run the workflow with logging callback
                 def log_callback(message):
                     log_messages.append(f"• {message}")
                     if debug_mode:
                         with log_placeholder.container():
-                            for msg in log_messages[-10:]:  # Show last 10 messages
+                            for msg in log_messages[-10:]:
                                 st.text(msg)
                 
+                progress_placeholder.progress(0.1)
+                status_placeholder.info("🔍 Validating URL and starting extraction...")
                 result = process_url_workflow_with_logging(url, log_callback if debug_mode else None)
                 
-                # Update progress based on results
                 if result['success']:
                     progress_placeholder.progress(1.0)
                     status_placeholder.success("✅ Processing completed successfully!")
-                    
-                    # Store results in session state for display
                     st.session_state['latest_result'] = result
-                    
                 else:
                     progress_placeholder.progress(0.5)
                     status_placeholder.error(f"❌ Error: {result['error']}")
     
     with col2:
-        # Information panel
         st.subheader("ℹ️ How it works")
         st.markdown("""
-        1. **Extract**: Scrapes content from your URL
-        2. **Process**: Sends content to chunk.dejan.ai
-        3. **Generate**: Returns structured JSON chunks
+        1. **Extract**: Scrapes content from your URL  
+        2. **Process**: Sends content to chunk.dejan.ai  
+        3. **Generate**: Returns structured JSON chunks  
         4. **Display**: Shows results below
         """)
-        
-        # Stats or additional info could go here
         st.info("💡 **Tip**: Works best with articles, blog posts, and structured content")
     
-    # Results display section
     if ('latest_result' in st.session_state and 
-        st.session_state['latest_result'] is not None and 
+        st.session_state['latest_result'] and 
         st.session_state['latest_result'].get('success', False)):
         result = st.session_state['latest_result']
-        
         st.markdown("---")
         st.subheader("📊 Results")
-        
-        # Create tabs for different views
         tab1, tab2, tab3 = st.tabs(["🎯 JSON Output", "📄 Extracted Content", "📈 Summary"])
         
         with tab1:
             st.subheader("Generated JSON Chunks")
-            
-            # Display JSON in a code block with copy functionality
             st.code(result['json_output'], language='json')
-            
-            # Add download button for JSON
             st.download_button(
                 label="💾 Download JSON",
                 data=result['json_output'],
                 file_name=f"chunks_{int(time.time())}.json",
                 mime="application/json"
             )
-        
         with tab2:
             st.subheader("Extracted Content")
             st.markdown("**Formatted content as extracted by the bookmarklet logic:**")
-            
-            # Display the content in a copyable text area
             extracted_content_display = st.text_area(
                 "Raw extracted content (copyable):",
                 value=result['extracted_content'],
                 height=400,
-                disabled=False,  # Make it copyable
-                help="This content is formatted exactly like the original bookmarklet. You can select and copy it."
+                disabled=False,
+                help="This content is formatted exactly like the original bookmarklet."
             )
-            
-            # Add a copy button for convenience
             if st.button("📋 Copy Extracted Content", key="copy_extracted"):
-                st.success("✅ Content copied to clipboard! (Use Ctrl+A then Ctrl+C in the text area above)")
+                st.success("✅ Content copied to clipboard!")
             
-            # Show content statistics
             content_lines = result['extracted_content'].split('\n\n')
-            h1_count = len([line for line in content_lines if line.startswith('H1:')])
-            subtitle_count = len([line for line in content_lines if line.startswith('SUBTITLE:')])
-            lead_count = len([line for line in content_lines if line.startswith('LEAD:')])
-            has_main_content = any(line.startswith('CONTENT:') for line in content_lines)
-            
-            col1, col2, col3, col4 = st.columns(4)
-            with col1:
-                st.metric("H1 Headers", h1_count)
-            with col2:
-                st.metric("Subtitles", subtitle_count)
-            with col3:
-                st.metric("Lead Paragraphs", lead_count)
-            with col4:
-                st.metric("Main Content", "✅ Yes" if has_main_content else "❌ No")
+            h1_count = len([l for l in content_lines if l.startswith('H1:')])
+            subtitle_count = len([l for l in content_lines if l.startswith('SUBTITLE:')])
+            lead_count = len([l for l in content_lines if l.startswith('LEAD:')])
+            has_main = any(l.startswith('CONTENT:') for l in content_lines)
+            c1, c2, c3, c4 = st.columns(4)
+            c1.metric("H1 Headers", h1_count)
+            c2.metric("Subtitles", subtitle_count)
+            c3.metric("Lead Paragraphs", lead_count)
+            c4.metric("Main Content", "✅ Yes" if has_main else "❌ No")
         
         with tab3:
             st.subheader("Processing Summary")
-            
-            # Parse JSON to show statistics
             try:
                 json_data = json.loads(result['json_output'])
-                
                 if 'big_chunks' in json_data:
-                    big_chunks = json_data['big_chunks']
-                    total_small_chunks = sum(len(chunk.get('small_chunks', [])) for chunk in big_chunks)
-                    
-                    col1, col2, col3 = st.columns(3)
-                    with col1:
-                        st.metric("Big Chunks", len(big_chunks))
-                    with col2:
-                        st.metric("Small Chunks", total_small_chunks)
-                    with col3:
-                        st.metric("Content Length", f"{len(result['extracted_content'])} chars")
-                
+                    big = len(json_data['big_chunks'])
+                    small = sum(len(ch.get('small_chunks', [])) for ch in json_data['big_chunks'])
+                    colA, colB, colC = st.columns(3)
+                    colA.metric("Big Chunks", big)
+                    colB.metric("Small Chunks", small)
+                    colC.metric("Content Length", f"{len(result['extracted_content'])} chars")
             except json.JSONDecodeError:
                 st.warning("Could not parse JSON for statistics")
-            
-            # Source URL info
             st.info(f"**Source URL**: {result['url']}")
     
-    # Footer
     st.markdown("---")
     st.markdown(
         "<div style='text-align: center; color: #666;'>"
@@ -670,10 +566,8 @@ def main():
         unsafe_allow_html=True
     )
 
-# Session state initialization - ensure proper initialization
 if 'latest_result' not in st.session_state:
     st.session_state['latest_result'] = None
 
-# Run the app
 if __name__ == "__main__":
     main()

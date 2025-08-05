@@ -38,7 +38,7 @@ st.set_page_config(
 
 class ContentExtractor:
     """
-    Handles content extraction from websites using the same logic as the JavaScript bookmarklet
+    Handles content extraction from websites using EXACT logic from the JavaScript bookmarklet
     """
     
     def __init__(self):
@@ -183,7 +183,7 @@ class ContentExtractor:
 
 class ChunkProcessor:
     """
-    Handles interaction with chunk.dejan.ai using Selenium automation
+    Handles interaction with chunk.dejan.ai using Selenium automation with spinner detection
     """
     
     def __init__(self):
@@ -268,7 +268,7 @@ class ChunkProcessor:
     
     def process_content(self, content):
         """
-        Submit content to chunk.dejan.ai with enhanced error handling and retries
+        Submit content to chunk.dejan.ai with spinner-based completion detection
         """
         max_retries = 2
         
@@ -343,40 +343,38 @@ class ChunkProcessor:
                 
                 logger.info("Clicking submit button...")
                 submit_button.click()
-                time.sleep(3)  # Give time for processing to start
                 
-                # Wait for results - but first wait for the loading spinner to appear and then disappear
-                logger.info("Waiting for processing to complete...")
+                # NEW SPINNER-BASED DETECTION LOGIC
+                # Wait for Streamlit spinner to appear (indicates processing started)
+                logger.info("Waiting for processing spinner to appear...")
+                try:
+                    WebDriverWait(self.driver, 30).until(
+                        EC.presence_of_element_located((By.CSS_SELECTOR, '[data-testid="stSpinner"]'))
+                    )
+                    logger.info("Processing spinner appeared - chunking started!")
+                except TimeoutException:
+                    logger.warning("Processing spinner not detected, continuing anyway...")
                 
-                # First, wait for copy button to appear (indicates processing started)
+                # Now wait for the spinner to disappear (indicates processing complete)
+                logger.info("Waiting for processing to complete (spinner to disappear)...")
+                try:
+                    WebDriverWait(self.driver, 180).until(  # 3-minute timeout for very large content
+                        EC.invisibility_of_element_located((By.CSS_SELECTOR, '[data-testid="stSpinner"]'))
+                    )
+                    logger.info("Processing spinner disappeared - chunking complete!")
+                except TimeoutException:
+                    logger.warning("Spinner timeout - processing might still be ongoing")
+                
+                # Find the copy button (should be ready now)
+                logger.info("Looking for copy button...")
                 copy_button = wait.until(
                     EC.presence_of_element_located((By.CSS_SELECTOR, '[data-testid="stCodeCopyButton"]'))
                 )
-                logger.info("Copy button appeared - processing started")
                 
-                # Now wait for the "Raw JSON Output" heading to appear (indicates processing truly complete)
-                try:
-                    logger.info("Waiting for 'Raw JSON Output' section to appear...")
-                    WebDriverWait(self.driver, 90).until(
-                        EC.presence_of_element_located((By.ID, "raw-json-output"))
-                    )
-                    logger.info("'Raw JSON Output' section appeared - processing definitely complete!")
-                    
-                except TimeoutException:
-                    logger.warning("Raw JSON Output heading not found, trying alternative approach...")
-                    # Fallback: wait for spinner to disappear if heading not found
-                    try:
-                        WebDriverWait(self.driver, 30).until(
-                            EC.invisibility_of_element_located((By.CSS_SELECTOR, 'i.st-emotion-cache-81zn7z'))
-                        )
-                        logger.info("Loading spinner disappeared as fallback")
-                    except TimeoutException:
-                        logger.warning("Neither Raw JSON Output nor spinner method worked")
+                # Small buffer to ensure JSON is fully populated
+                time.sleep(1)
                 
-                # Small buffer to ensure JSON is populated
-                time.sleep(2)
-                
-                # Now extract the JSON
+                # Extract the JSON
                 logger.info("Extracting JSON output...")
                 json_output = copy_button.get_attribute('data-clipboard-text')
                 

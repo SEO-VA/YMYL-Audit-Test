@@ -153,177 +153,109 @@ class ContentExtractor:
 
 class ChunkProcessor:
     """
-    Handles interaction with chunk.dejan.ai using Selenium automation
-    and combined spinner + JSON-length stabilization detection.
+    Handles interaction with chunk.dejan.ai using Selenium and network-based JSON detection
+    in a background thread to avoid blocking Streamlit's UI.
     """
-    
     def __init__(self):
         self.driver = None
         self.setup_driver()
-    
+
     def setup_driver(self):
         """
-        Initialize Chrome WebDriver with ultra-stable settings for Streamlit Cloud.
+        Initialize Chrome WebDriver with both performance logging and
+        the existing stability flags.
         """
         try:
+            # Merge performance logging with stability options
+            caps = DesiredCapabilities.CHROME.copy()
+            caps['goog:loggingPrefs'] = {'performance': 'ALL'}
+
             chrome_options = Options()
             chrome_options.add_argument('--headless=new')
             chrome_options.add_argument('--no-sandbox')
             chrome_options.add_argument('--disable-dev-shm-usage')
             chrome_options.add_argument('--disable-gpu')
             chrome_options.add_argument('--disable-web-security')
-            chrome_options.add_argument('--disable-features=VizDisplayCompositor')
             chrome_options.add_argument('--disable-extensions')
             chrome_options.add_argument('--disable-plugins')
             chrome_options.add_argument('--disable-images')
             chrome_options.add_argument('--disable-background-timer-throttling')
-            chrome_options.add_argument('--disable-backgrounding-occluded-windows')
-            chrome_options.add_argument('--disable-renderer-backgrounding')
-            chrome_options.add_argument('--disable-field-trial-config')
-            chrome_options.add_argument('--disable-back-forward-cache')
-            chrome_options.add_argument('--disable-hang-monitor')
-            chrome_options.add_argument('--disable-prompt-on-repost')
-            chrome_options.add_argument('--disable-sync')
-            chrome_options.add_argument('--disable-translate')
-            chrome_options.add_argument('--hide-scrollbars')
-            chrome_options.add_argument('--metrics-recording-only')
-            chrome_options.add_argument('--mute-audio')
-            chrome_options.add_argument('--no-first-run')
-            chrome_options.add_argument('--safebrowsing-disable-auto-update')
-            chrome_options.add_argument('--single-process')
-            chrome_options.add_argument('--disable-default-apps')
             chrome_options.add_argument('--window-size=1280,720')
             chrome_options.add_argument('--start-maximized')
-            chrome_options.add_argument('--max_old_space_size=2048')
-            chrome_options.add_argument('--memory-pressure-off')
-            chrome_options.add_argument('--disable-logging')
-            chrome_options.add_argument('--log-level=3')
-            chrome_options.add_argument('--silent')
-            chrome_options.add_argument(
-                '--user-agent=Mozilla/5.0 (X11; Linux x86_64) '
-                'AppleWebKit/537.36 (KHTML, like Gecko) '
-                'Chrome/120.0.0.0 Safari/537.36'
-            )
-            
-            try:
-                self.driver = webdriver.Chrome(options=chrome_options)
-            except Exception:
-                basic_options = Options()
-                basic_options.add_argument('--headless')
-                basic_options.add_argument('--no-sandbox')
-                basic_options.add_argument('--disable-dev-shm-usage')
-                self.driver = webdriver.Chrome(options=basic_options)
-            
+            chrome_options.add_argument('--user-agent=Mozilla/5.0 (X11; Linux x86_64)')
+
+            self.driver = webdriver.Chrome(desired_capabilities=caps, options=chrome_options)
             self.driver.set_page_load_timeout(60)
             self.driver.implicitly_wait(15)
-            logger.info("Chrome WebDriver initialized successfully")
+            logger.info('WebDriver initialized with performance logging and stability flags')
             return True
-        
-        except WebDriverException as e:
-            logger.error(f"Failed to initialize Chrome driver: {e}")
+        except Exception as e:
+            logger.error(f'Driver init failed: {e}')
             return False
-    
+
     def process_content(self, content):
         """
-        Submit content to chunk.dejan.ai with explicit wait for valid JSON
-        in the copy-button's data-clipboard-text attribute.
+        Submit content to chunk.dejan.ai, then offload network-log polling to a
+        background thread to detect the fetch response without blocking.
         """
         max_retries = 2
         for attempt in range(max_retries):
-            if not self.driver:
-                if not self.setup_driver():
-                    return False, None, "Failed to initialize browser"
+            if not self.driver and not self.setup_driver():
+                return False, None, 'Browser init failed'
 
             try:
-                logger.info(f"Attempt {attempt+1}/{max_retries}: loading chunk.dejan.ai")
-                self.driver.get("https://chunk.dejan.ai/")
-                time.sleep(8)  # allow Streamlit to render
+                logger.info(f'Attempt {attempt+1}/{max_retries}: navigating to chunk.dejan.ai')
+                self.driver.get('https://chunk.dejan.ai/')
+                time.sleep(8)
+
+                # fill input
                 wait = WebDriverWait(self.driver, 45)
-
-                # 1) find & fill textarea
-                input_el = None
-                for by, sel in [
-                    (By.ID, "text_area_1"),
-                    (By.CSS_SELECTOR, 'textarea[aria-label="Text to chunk:"]'),
-                    (By.CSS_SELECTOR, 'textarea'),
-                ]:
-                    try:
-                        input_el = wait.until(EC.presence_of_element_located((by, sel)))
-                        break
-                    except TimeoutException:
-                        pass
-                if not input_el:
-                    raise TimeoutException("Input field not found")
-                input_el.clear()
+                textbox = wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, 'textarea')))
+                textbox.clear()
+                textbox.send_keys(content[:3000])
                 time.sleep(1)
-                input_el.send_keys(content[:3000])
-                time.sleep(2)
 
-                # 2) click “Generate” button
-                submit_btn = None
-                for by, sel in [
-                    (By.CSS_SELECTOR, '[data-testid="stBaseButton-secondary"]'),
-                    (By.XPATH, "//button[contains(text(), 'Generate')]"),
-                    (By.CSS_SELECTOR, 'button[kind="secondary"]'),
-                ]:
-                    try:
-                        submit_btn = wait.until(EC.element_to_be_clickable((by, sel)))
-                        break
-                    except TimeoutException:
-                        pass
-                if not submit_btn:
-                    raise TimeoutException("Submit button not found")
-                submit_btn.click()
+                # click generate
+                gen_btn = wait.until(
+                    EC.element_to_be_clickable((By.CSS_SELECTOR, '[data-testid="stBaseButton-secondary"]'))
+                )
+                gen_btn.click()
 
-                # 3) now wait until the copy-button’s attribute becomes valid JSON
-                locator = (By.CSS_SELECTOR, '[data-testid="stCodeCopyButton"]')
-
-                def json_ready(driver):
-                    try:
-                        btn = driver.find_element(*locator)
-                        txt = btn.get_attribute('data-clipboard-text') or ""
-                        txt = txt.strip()
-                        if txt.startswith('{') and txt.endswith('}'):
-                            import json
-                            json.loads(txt)
-                            return True
-                    except Exception:
-                        pass
+                # background thread to wait for network response
+                def network_ready():
+                    start = time.time()
+                    while time.time() - start < 180:
+                        logs = self.driver.get_log('performance')
+                        for entry in logs:
+                            msg = json.loads(entry['message'])['message']
+                            if msg.get('method') == 'Network.responseReceived':
+                                r = msg['params']['response']
+                                if 'chunk.dejan.ai' in r.get('url', '') and r.get('status') == 200:
+                                    return True
+                        time.sleep(0.5)
                     return False
 
-                logger.info("Waiting for JSON to become ready on the copy button…")
-                WebDriverWait(self.driver, 180, poll_frequency=1).until(json_ready)
-                logger.info("Valid JSON detected!")
+                from concurrent.futures import ThreadPoolExecutor
+                with ThreadPoolExecutor(max_workers=1) as executor:
+                    future = executor.submit(network_ready)
+                    if not future.result():
+                        raise TimeoutException('Network JSON response not received')
+                logger.info('Network JSON response received')
 
-                # 4) extract & validate final JSON
-                btn = self.driver.find_element(*locator)
-                json_output = btn.get_attribute('data-clipboard-text')
-                try:
-                    json.loads(json_output)
-                    return True, json_output, None
-                except json.JSONDecodeError:
-                    return False, None, "Invalid JSON after wait"
+                # extract JSON
+                copy_btn = self.driver.find_element(By.CSS_SELECTOR, '[data-testid="stCodeCopyButton"]')
+                json_text = copy_btn.get_attribute('data-clipboard-text')
+                json.loads(json_text)
+                return True, json_text, None
 
             except Exception as e:
-                logger.warning(f"Attempt #{attempt+1} failed: {e}")
+                logger.warning(f'Attempt {attempt+1} failed: {e}')
                 if attempt == max_retries - 1:
                     return False, None, str(e)
                 self.cleanup()
                 time.sleep(5)
-
-        return False, None, "All retry attempts failed"
-
-    
-    def cleanup(self):
-        """
-        Clean up browser resources.
-        """
-        if self.driver:
-            try:
-                self.driver.quit()
-            except:
-                pass
-
+        return False, None, 'All attempts failed'
+        
 def validate_url(url):
     """
     Validate that the provided URL is properly formatted and accessible

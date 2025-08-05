@@ -191,26 +191,74 @@ class ChunkProcessor:
     
     def setup_driver(self):
         """
-        Initialize Chrome WebDriver with optimized settings for Streamlit Cloud
+        Initialize Chrome WebDriver with ultra-stable settings for Streamlit Cloud
         """
         try:
-            # Configure Chrome options for headless operation and Streamlit Cloud compatibility
+            # Configure Chrome options with maximum stability for containerized environments
             chrome_options = Options()
-            chrome_options.add_argument('--headless')  # Run without GUI for server deployment
-            chrome_options.add_argument('--no-sandbox')  # Required for containerized environments
-            chrome_options.add_argument('--disable-dev-shm-usage')  # Overcome limited resource problems
-            chrome_options.add_argument('--disable-gpu')  # Disable GPU acceleration
-            chrome_options.add_argument('--window-size=1920,1080')  # Set consistent window size
-            chrome_options.add_argument('--disable-web-security')  # Disable web security for testing
-            chrome_options.add_argument('--disable-features=VizDisplayCompositor')  # Additional stability
-            chrome_options.add_argument('--disable-extensions')  # Disable extensions
-            chrome_options.add_argument('--disable-plugins')  # Disable plugins
-            chrome_options.add_argument('--remote-debugging-port=9222')  # Enable remote debugging
             
-            # Initialize the WebDriver (Streamlit Cloud will use chromium-driver from packages.txt)
-            self.driver = webdriver.Chrome(options=chrome_options)
-            self.driver.implicitly_wait(10)  # Set default wait time for element finding
+            # Core headless settings
+            chrome_options.add_argument('--headless=new')  # Use new headless mode
+            chrome_options.add_argument('--no-sandbox')
+            chrome_options.add_argument('--disable-dev-shm-usage')
+            chrome_options.add_argument('--disable-gpu')
             
+            # Memory and stability optimizations
+            chrome_options.add_argument('--disable-web-security')
+            chrome_options.add_argument('--disable-features=VizDisplayCompositor')
+            chrome_options.add_argument('--disable-extensions')
+            chrome_options.add_argument('--disable-plugins')
+            chrome_options.add_argument('--disable-images')  # Faster loading
+            chrome_options.add_argument('--disable-background-timer-throttling')
+            chrome_options.add_argument('--disable-backgrounding-occluded-windows')
+            chrome_options.add_argument('--disable-renderer-backgrounding')
+            chrome_options.add_argument('--disable-field-trial-config')
+            chrome_options.add_argument('--disable-back-forward-cache')
+            chrome_options.add_argument('--disable-hang-monitor')
+            chrome_options.add_argument('--disable-prompt-on-repost')
+            chrome_options.add_argument('--disable-sync')
+            chrome_options.add_argument('--disable-translate')
+            chrome_options.add_argument('--hide-scrollbars')
+            chrome_options.add_argument('--metrics-recording-only')
+            chrome_options.add_argument('--mute-audio')
+            chrome_options.add_argument('--no-first-run')
+            chrome_options.add_argument('--safebrowsing-disable-auto-update')
+            chrome_options.add_argument('--single-process')  # Run in single process mode
+            chrome_options.add_argument('--disable-default-apps')
+            
+            # Window and display settings
+            chrome_options.add_argument('--window-size=1280,720')  # Smaller window
+            chrome_options.add_argument('--start-maximized')
+            
+            # Memory limits
+            chrome_options.add_argument('--max_old_space_size=2048')
+            chrome_options.add_argument('--memory-pressure-off')
+            
+            # Disable logging that might cause issues
+            chrome_options.add_argument('--disable-logging')
+            chrome_options.add_argument('--log-level=3')
+            chrome_options.add_argument('--silent')
+            
+            # Set user agent
+            chrome_options.add_argument('--user-agent=Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36')
+            
+            # Initialize the WebDriver with error handling
+            try:
+                self.driver = webdriver.Chrome(options=chrome_options)
+            except Exception as e:
+                logger.error(f"Failed with advanced options, trying basic setup: {e}")
+                # Fallback to basic options
+                basic_options = Options()
+                basic_options.add_argument('--headless')
+                basic_options.add_argument('--no-sandbox')
+                basic_options.add_argument('--disable-dev-shm-usage')
+                self.driver = webdriver.Chrome(options=basic_options)
+            
+            # Set timeouts
+            self.driver.set_page_load_timeout(60)
+            self.driver.implicitly_wait(15)
+            
+            logger.info("Chrome WebDriver initialized successfully")
             return True
             
         except WebDriverException as e:
@@ -219,65 +267,136 @@ class ChunkProcessor:
     
     def process_content(self, content):
         """
-        Submit content to chunk.dejan.ai and retrieve the generated JSON
-        
-        Args:
-            content (str): Text content to be processed
-            
-        Returns:
-            tuple: (success: bool, json_output: str, error: str)
+        Submit content to chunk.dejan.ai with enhanced error handling and retries
         """
-        if not self.driver:
-            if not self.setup_driver():
-                return False, None, "Failed to initialize browser"
+        max_retries = 2
         
-        try:
-            # Navigate to the chunk.dejan.ai website
-            self.driver.get("https://chunk.dejan.ai/")
+        for attempt in range(max_retries):
+            if not self.driver:
+                if not self.setup_driver():
+                    return False, None, "Failed to initialize browser"
             
-            # Wait for the page to fully load (Streamlit apps take time to initialize)
-            wait = WebDriverWait(self.driver, 30)
-            
-            # Find and clear the input textarea using the ID we identified
-            input_element = wait.until(
-                EC.presence_of_element_located((By.ID, "text_area_1"))
-            )
-            
-            # Clear any existing content and input our scraped content
-            input_element.clear()
-            input_element.send_keys(content)
-            
-            # Find and click the "Generate Chunks and Visualize" button
-            submit_button = wait.until(
-                EC.element_to_be_clickable((By.CSS_SELECTOR, '[data-testid="stBaseButton-secondary"]'))
-            )
-            submit_button.click()
-            
-            # Wait for processing to complete by waiting for the copy button to appear
-            # This button only appears when the JSON output is ready
-            copy_button = wait.until(
-                EC.presence_of_element_located((By.CSS_SELECTOR, '[data-testid="stCodeCopyButton"]'))
-            )
-            
-            # Extract the JSON from the copy button's data-clipboard-text attribute
-            json_output = copy_button.get_attribute('data-clipboard-text')
-            
-            if json_output:
-                # Validate that we got valid JSON
-                try:
-                    json.loads(json_output)  # Test if it's valid JSON
-                    return True, json_output, None
-                except json.JSONDecodeError:
-                    return False, None, "Invalid JSON received from chunk.dejan.ai"
-            else:
-                return False, None, "No JSON output found"
+            try:
+                logger.info(f"Attempt {attempt + 1}/{max_retries}: Navigating to chunk.dejan.ai...")
                 
-        except TimeoutException:
-            return False, None, "Timeout waiting for chunk.dejan.ai to process content"
-        except WebDriverException as e:
-            return False, None, f"Browser error: {str(e)}"
-        except Exception as e:
-            return False, None, f"Unexpected error: {str(e)}"
+                # Navigate to the chunk.dejan.ai website
+                self.driver.get("https://chunk.dejan.ai/")
+                
+                # Wait longer for Streamlit to initialize
+                time.sleep(8)
+                
+                # Wait for the page to fully load
+                wait = WebDriverWait(self.driver, 45)
+                
+                # Find input field with multiple strategies
+                input_element = None
+                selectors_to_try = [
+                    (By.ID, "text_area_1"),
+                    (By.CSS_SELECTOR, 'textarea[aria-label="Text to chunk:"]'),
+                    (By.CSS_SELECTOR, 'textarea'),
+                ]
+                
+                for selector_type, selector in selectors_to_try:
+                    try:
+                        input_element = wait.until(
+                            EC.presence_of_element_located((selector_type, selector))
+                        )
+                        logger.info(f"Found input field with selector: {selector}")
+                        break
+                    except TimeoutException:
+                        continue
+                
+                if not input_element:
+                    raise TimeoutException("Could not find input field with any selector")
+                
+                # Clear and input content
+                logger.info("Clearing and inputting content...")
+                input_element.clear()
+                time.sleep(2)
+                
+                # Send content in smaller chunks to avoid issues
+                content_to_send = content[:3000]  # Limit content size
+                input_element.send_keys(content_to_send)
+                time.sleep(3)
+                
+                # Find and click submit button
+                submit_button = None
+                button_selectors = [
+                    (By.CSS_SELECTOR, '[data-testid="stBaseButton-secondary"]'),
+                    (By.XPATH, "//button[contains(text(), 'Generate')]"),
+                    (By.CSS_SELECTOR, 'button[kind="secondary"]'),
+                ]
+                
+                for selector_type, selector in button_selectors:
+                    try:
+                        submit_button = wait.until(
+                            EC.element_to_be_clickable((selector_type, selector))
+                        )
+                        logger.info(f"Found submit button with selector: {selector}")
+                        break
+                    except TimeoutException:
+                        continue
+                
+                if not submit_button:
+                    raise TimeoutException("Could not find submit button")
+                
+                logger.info("Clicking submit button...")
+                submit_button.click()
+                time.sleep(5)
+                
+                # Wait for results with extended timeout
+                logger.info("Waiting for processing to complete...")
+                copy_button = wait.until(
+                    EC.presence_of_element_located((By.CSS_SELECTOR, '[data-testid="stCodeCopyButton"]'))
+                )
+                
+                # Extract JSON
+                json_output = copy_button.get_attribute('data-clipboard-text')
+                
+                if json_output:
+                    try:
+                        json.loads(json_output)  # Validate JSON
+                        logger.info("Successfully retrieved and validated JSON output")
+                        return True, json_output, None
+                    except json.JSONDecodeError:
+                        return False, None, "Invalid JSON received from chunk.dejan.ai"
+                else:
+                    return False, None, "No JSON output found"
+                    
+            except TimeoutException as e:
+                error_msg = f"Timeout on attempt {attempt + 1}: {str(e)}"
+                logger.warning(error_msg)
+                if attempt == max_retries - 1:
+                    return False, None, f"Timeout after {max_retries} attempts waiting for chunk.dejan.ai"
+                
+                # Cleanup and retry
+                self.cleanup()
+                time.sleep(5)
+                continue
+                
+            except WebDriverException as e:
+                error_msg = f"Browser error on attempt {attempt + 1}: {str(e)}"
+                logger.warning(error_msg)
+                if attempt == max_retries - 1:
+                    return False, None, f"Browser error after {max_retries} attempts: {str(e)}"
+                
+                # Cleanup and retry
+                self.cleanup()
+                time.sleep(5)
+                continue
+                
+            except Exception as e:
+                error_msg = f"Unexpected error on attempt {attempt + 1}: {str(e)}"
+                logger.error(error_msg)
+                if attempt == max_retries - 1:
+                    return False, None, f"Unexpected error after {max_retries} attempts: {str(e)}"
+                
+                # Cleanup and retry
+                self.cleanup()
+                time.sleep(5)
+                continue
+        
+        return False, None, "All retry attempts failed"
     
     def cleanup(self):
         """
@@ -423,6 +542,10 @@ def main():
     # App header with styling
     st.title("🔄 Content Processor")
     st.markdown("**Automatically extract content from websites and generate JSON chunks**")
+    
+    # Debug mode toggle
+    debug_mode = st.sidebar.checkbox("🐛 Debug Mode", help="Show detailed processing logs")
+    
     st.markdown("---")
     
     # Create two columns for better layout
@@ -470,11 +593,12 @@ def main():
                 # Run the workflow with logging callback
                 def log_callback(message):
                     log_messages.append(f"• {message}")
-                    with log_placeholder.container():
-                        for msg in log_messages[-10:]:  # Show last 10 messages
-                            st.text(msg)
+                    if debug_mode:
+                        with log_placeholder.container():
+                            for msg in log_messages[-10:]:  # Show last 10 messages
+                                st.text(msg)
                 
-                result = process_url_workflow_with_logging(url, log_callback)
+                result = process_url_workflow_with_logging(url, log_callback if debug_mode else None)
                 
                 # Update progress based on results
                 if result['success']:

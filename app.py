@@ -54,7 +54,7 @@ class ContentExtractor:
     
     def extract_content(self, url):
         """
-        Extract structured content from a webpage using the same logic as the JS bookmarklet
+        Extract structured content using EXACT logic from the JavaScript bookmarklet
         
         Args:
             url (str): Source URL to scrape
@@ -74,48 +74,51 @@ class ContentExtractor:
             soup = BeautifulSoup(response.content, 'html.parser')
             content_parts = []
             
-            # Find the main content container using fallback strategy
-            main_container = self._find_main_container(soup)
+            # Find the main content container using EXACT bookmarklet logic
+            main_container = self._find_main_container_exact(soup)
             
-            # Extract H1 elements (main headings)
+            # Extract H1 elements - EXACT bookmarklet logic
             h1_elements = soup.find_all('h1')
             for h1 in h1_elements:
-                text = self._get_clean_text(h1)
-                if text:
-                    content_parts.append(f'H1: {text}')
+                # Use innerText equivalent (get_text with strip) || textContent equivalent  
+                text = self._get_inner_text(h1)
+                if text.strip():
+                    content_parts.append(f'H1: {text.strip()}')
             
-            # Extract subtitles with specific class patterns (matching JS logic)
-            subtitle_selectors = [
-                '.sub-title', '.subtitle', 
-                '[class*="sub-title"]', '[class*="subtitle"]'
-            ]
+            # Extract subtitles with EXACT bookmarklet logic
+            # '.sub-title,.subtitle,[class*="sub-title"],[class*="subtitle"]'
+            subtitle_selectors = '.sub-title,.subtitle,[class*="sub-title"],[class*="subtitle"]'
+            subtitles = soup.select(subtitle_selectors)
             
-            for selector in subtitle_selectors:
-                subtitles = soup.select(selector)
-                for subtitle in subtitles:
-                    # Check if it has d-block class or is within d-block (matching JS logic)
-                    if ('d-block' in subtitle.get('class', []) or 
-                        subtitle.find_parent(class_='d-block')):
-                        text = self._get_clean_text(subtitle)
-                        if text:
-                            content_parts.append(f'SUBTITLE: {text}')
+            for subtitle in subtitles:
+                # Check EXACT condition: className.includes('d-block') || closest('.d-block')
+                class_names = ' '.join(subtitle.get('class', []))
+                has_d_block = 'd-block' in class_names
+                closest_d_block = subtitle.find_parent(class_='d-block') is not None
+                
+                if has_d_block or closest_d_block:
+                    text = self._get_inner_text(subtitle)
+                    if text.strip():
+                        content_parts.append(f'SUBTITLE: {text.strip()}')
             
-            # Extract lead paragraphs (intro/summary paragraphs)
-            lead_selectors = ['.lead', '[class*="lead"]']
-            for selector in lead_selectors:
-                leads = soup.select(selector)
-                for lead in leads:
-                    text = self._get_clean_text(lead)
-                    if text:
-                        content_parts.append(f'LEAD: {text}')
+            # Extract lead paragraphs - EXACT bookmarklet logic
+            # '.lead,[class*="lead"]'
+            lead_selectors = '.lead,[class*="lead"]'
+            leads = soup.select(lead_selectors)
             
-            # Extract main content from the identified container
+            for lead in leads:
+                text = self._get_inner_text(lead)
+                if text.strip():
+                    content_parts.append(f'LEAD: {text.strip()}')
+            
+            # Extract main content - EXACT bookmarklet logic
             if main_container:
-                main_text = self._get_clean_text(main_container)
-                if main_text:
-                    content_parts.append(f'CONTENT: {main_text}')
+                # Use innerText || textContent || '' equivalent
+                main_text = self._get_inner_text(main_container) or ''
+                if main_text.strip():
+                    content_parts.append(f'CONTENT: {main_text.strip()}')
             
-            # Join all content parts with double newlines for readability
+            # Join all content parts - EXACT bookmarklet logic
             final_content = '\n\n'.join(content_parts) if content_parts else 'No content found'
             
             return True, final_content, None
@@ -125,60 +128,54 @@ class ContentExtractor:
         except Exception as e:
             return False, None, f"Error processing content: {str(e)}"
     
-    def _find_main_container(self, soup):
+    def _find_main_container_exact(self, soup):
         """
-        Find the main content container using the same fallback logic as the JS bookmarklet
+        Find main content container using EXACT bookmarklet logic
         
-        Args:
-            soup: BeautifulSoup object
-            
-        Returns:
-            BeautifulSoup element or None
+        var a=document.querySelector('article')||document.querySelector('main')||document.querySelector('.content')||document.querySelector('#content')||document.querySelector('[role="main"]');
+        if(!a){var p=document.querySelectorAll('p');if(p.length>3)a=p[0].parentElement;}
+        if(!a)a=document.body;
         """
-        # Primary selectors in order of preference (semantic HTML elements first)
-        primary_selectors = [
-            'article',      # Semantic article element
-            'main',         # Main content area
-            '.content',     # Common content class
-            '#content',     # Common content ID
-            '[role="main"]' # ARIA main role
-        ]
+        # Try selectors in exact order from bookmarklet
+        selectors = ['article', 'main', '.content', '#content', '[role="main"]']
         
-        # Try each selector in order
-        for selector in primary_selectors:
+        for selector in selectors:
             container = soup.select_one(selector)
             if container:
                 return container
         
-        # Fallback: find parent element of paragraph clusters
-        # This handles sites without semantic markup
+        # Fallback: if no container found, check paragraph logic
         paragraphs = soup.find_all('p')
         if len(paragraphs) > 3:
             return paragraphs[0].parent
         
-        # Last resort: use the entire body element
+        # Final fallback: document.body equivalent
         return soup.find('body')
     
-    def _get_clean_text(self, element):
+    def _get_inner_text(self, element):
         """
-        Extract and clean text from an HTML element
+        Get text equivalent to JavaScript innerText || textContent
         
-        Args:
-            element: BeautifulSoup element
-            
-        Returns:
-            str: Cleaned text content
+        innerText preserves formatting and line breaks better than textContent
+        BeautifulSoup's get_text() with separator='\n' is closest to innerText
         """
         if not element:
             return ''
         
-        # Extract text with spaces between elements and strip whitespace
-        text = element.get_text(separator=' ', strip=True)
-        
-        # Normalize whitespace (remove extra spaces, tabs, newlines)
-        text = ' '.join(text.split())
-        
-        return text
+        try:
+            # Try to mimic innerText behavior - preserves block-level formatting
+            text = element.get_text(separator='\n', strip=True)
+            
+            # Clean up excessive whitespace while preserving structure
+            lines = [line.strip() for line in text.split('\n')]
+            lines = [line for line in lines if line]  # Remove empty lines
+            
+            # Join with spaces (similar to how innerText handles block elements)
+            return ' '.join(lines)
+            
+        except:
+            # Fallback to textContent equivalent
+            return element.get_text(strip=True)
 
 class ChunkProcessor:
     """
@@ -342,15 +339,40 @@ class ChunkProcessor:
                 
                 logger.info("Clicking submit button...")
                 submit_button.click()
-                time.sleep(5)
+                time.sleep(3)  # Give time for processing to start
                 
-                # Wait for results with extended timeout
+                # Wait for results - but first wait for the loading spinner to appear and then disappear
                 logger.info("Waiting for processing to complete...")
+                
+                # First, wait for copy button to appear (indicates processing started)
                 copy_button = wait.until(
                     EC.presence_of_element_located((By.CSS_SELECTOR, '[data-testid="stCodeCopyButton"]'))
                 )
+                logger.info("Copy button appeared - processing started")
                 
-                # Extract JSON
+                # Now wait for the loading spinner to disappear (indicates processing finished)
+                try:
+                    # Wait for spinner to appear first (it might take a moment)
+                    spinner_appeared = WebDriverWait(self.driver, 10).until(
+                        EC.presence_of_element_located((By.CSS_SELECTOR, 'i.st-emotion-cache-81zn7z'))
+                    )
+                    logger.info("Loading spinner detected - processing in progress")
+                    
+                    # Now wait for it to disappear (processing complete)
+                    WebDriverWait(self.driver, 60).until(
+                        EC.invisibility_of_element_located((By.CSS_SELECTOR, 'i.st-emotion-cache-81zn7z'))
+                    )
+                    logger.info("Loading spinner disappeared - processing complete")
+                    
+                except TimeoutException:
+                    logger.info("No loading spinner detected or it disappeared quickly")
+                
+                # Additional buffer time to ensure JSON is fully populated
+                logger.info("Adding buffer time for JSON population...")
+                time.sleep(5)
+                
+                # Now extract the JSON
+                logger.info("Extracting JSON output...")
                 json_output = copy_button.get_attribute('data-clipboard-text')
                 
                 if json_output:

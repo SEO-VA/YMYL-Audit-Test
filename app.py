@@ -55,7 +55,6 @@ def extract_content(url: str) -> str:
 
 # --- Chunk Processing via Selenium ---
 def process_chunks(text: str, debug: bool = False) -> dict:
-    # Chrome options for Streamlit Cloud
     chrome_options = Options()
     chrome_options.add_argument('--headless')
     chrome_options.add_argument('--no-sandbox')
@@ -65,18 +64,16 @@ def process_chunks(text: str, debug: bool = False) -> dict:
     driver = webdriver.Chrome(options=chrome_options)
     try:
         driver.get('https://chunk.dejan.ai/')
-        # input text
         textarea = WebDriverWait(driver, 45).until(
             EC.presence_of_element_located((By.CSS_SELECTOR, 'textarea#text_area_1'))
         )
         textarea.clear()
         textarea.send_keys(text)
-        # click generate
         btn = driver.find_element(By.CSS_SELECTOR, 'button[data-testid="stBaseButton-secondary"]')
         btn.click()
 
-        # 1) wait for spinner(s) to appear/disappear
-        # debug: dump spinners
+        # Wait for processing to truly finish
+        # 1) Ensure spinner(s) have appeared and then disappeared
         if debug:
             spinners = driver.find_elements(By.CSS_SELECTOR, 'div.stSpinner')
             print(f"Found {len(spinners)} spinner(s)")
@@ -86,28 +83,22 @@ def process_chunks(text: str, debug: bool = False) -> dict:
             EC.invisibility_of_element_located((By.CSS_SELECTOR, 'div.stSpinner'))
         )
 
-        # 2) poll for JSON stability + validity
+        # 2) Poll until JSON output stabilizes and parses
         def get_json_text():
             copy_btn = driver.find_element(By.CSS_SELECTOR, 'button[data-testid="stCodeCopyButton"]')
             return copy_btn.get_attribute('data-clipboard-text') or ''
 
         prev = ''
-        stable_json = ''
         for _ in range(60):
             current = get_json_text()
             if current and current == prev:
                 try:
-                    parsed = json.loads(current)
-                    stable_json = parsed
-                    break
+                    return json.loads(current)
                 except json.JSONDecodeError:
                     pass
             prev = current
             time.sleep(1)
-        else:
-            raise TimeoutException("JSON never stabilized or stayed invalid after spinner disappeared.")
-
-        return stable_json
+        raise TimeoutException("JSON never stabilized or stayed invalid after spinner disappeared.")
 
     finally:
         driver.quit()

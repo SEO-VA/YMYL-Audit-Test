@@ -122,7 +122,122 @@ class ContentExtractor:
             # Join all content parts - EXACT bookmarklet logic
             final_content = '\n\n'.join(content_parts) if content_parts else 'No content found'
             
-            return True, final_content, None
+            return True
+    
+    def extract_json_with_multiple_methods(self):
+        """
+        Try multiple methods to extract the complete JSON content
+        """
+        logger.info("Trying multiple extraction methods...")
+        
+        # Method 1: Standard copy button attribute
+        try:
+            logger.info("Method 1: Copy button data-clipboard-text attribute")
+            copy_button = self.driver.find_element(By.CSS_SELECTOR, '[data-testid="stCodeCopyButton"]')
+            json_raw = copy_button.get_attribute('data-clipboard-text')
+            if json_raw:
+                json_decoded = html.unescape(json_raw)
+                logger.info(f"Method 1 result: {len(json_decoded)} characters")
+                if len(json_decoded) > 1000:  # Reasonable size check
+                    return json_decoded
+        except Exception as e:
+            logger.warning(f"Method 1 failed: {e}")
+        
+        # Method 2: JavaScript execution to get clipboard data
+        try:
+            logger.info("Method 2: JavaScript execution for clipboard data")
+            js_script = """
+                var copyButton = document.querySelector('[data-testid="stCodeCopyButton"]');
+                return copyButton ? copyButton.getAttribute('data-clipboard-text') : null;
+            """
+            json_raw = self.driver.execute_script(js_script)
+            if json_raw:
+                json_decoded = html.unescape(json_raw)
+                logger.info(f"Method 2 result: {len(json_decoded)} characters")
+                if len(json_decoded) > 1000:
+                    return json_decoded
+        except Exception as e:
+            logger.warning(f"Method 2 failed: {e}")
+        
+        # Method 3: Find and read from visible text output area
+        try:
+            logger.info("Method 3: Visible text output area")
+            # Look for code blocks or pre elements that might contain the JSON
+            possible_selectors = [
+                'pre', 'code', '[class*="json"]', '[class*="output"]', 
+                '[class*="result"]', 'textarea', '[data-testid*="code"]'
+            ]
+            
+            for selector in possible_selectors:
+                elements = self.driver.find_elements(By.CSS_SELECTOR, selector)
+                for element in elements:
+                    text = element.text
+                    if text and '{' in text and '"big_chunks"' in text:
+                        logger.info(f"Method 3 found content in {selector}: {len(text)} characters")
+                        if len(text) > 1000:
+                            return text
+        except Exception as e:
+            logger.warning(f"Method 3 failed: {e}")
+        
+        # Method 4: JavaScript to get all text content from page
+        try:
+            logger.info("Method 4: JavaScript page content search")
+            js_script = """
+                var allElements = document.querySelectorAll('*');
+                for (var i = 0; i < allElements.length; i++) {
+                    var text = allElements[i].textContent || allElements[i].innerText || '';
+                    if (text.includes('big_chunks') && text.includes('{') && text.length > 1000) {
+                        return text;
+                    }
+                }
+                return null;
+            """
+            result = self.driver.execute_script(js_script)
+            if result:
+                logger.info(f"Method 4 result: {len(result)} characters")
+                return result
+        except Exception as e:
+            logger.warning(f"Method 4 failed: {e}")
+        
+        # Method 5: Multiple attempts with delays
+        try:
+            logger.info("Method 5: Multiple attempts with delays")
+            copy_button = self.driver.find_element(By.CSS_SELECTOR, '[data-testid="stCodeCopyButton"]')
+            
+            for attempt in range(3):
+                time.sleep(2)  # Wait between attempts
+                json_raw = copy_button.get_attribute('data-clipboard-text')
+                if json_raw:
+                    json_decoded = html.unescape(json_raw)
+                    logger.info(f"Method 5 attempt {attempt + 1}: {len(json_decoded)} characters")
+                    if len(json_decoded) > 1000:
+                        return json_decoded
+        except Exception as e:
+            logger.warning(f"Method 5 failed: {e}")
+        
+        # Method 6: Direct element innerHTML/outerHTML
+        try:
+            logger.info("Method 6: Element innerHTML search")
+            # Get the page source and search for JSON content
+            page_source = self.driver.page_source
+            if '"big_chunks"' in page_source:
+                # Try to extract JSON from page source
+                import re
+                # Look for JSON-like content in the page source
+                json_pattern = r'\{[^{}]*"big_chunks"[^{}]*\[.*?\]\s*\}'
+                matches = re.findall(json_pattern, page_source, re.DOTALL)
+                if matches:
+                    # Get the longest match (most complete)
+                    longest_match = max(matches, key=len)
+                    # Decode HTML entities
+                    decoded_match = html.unescape(longest_match)
+                    logger.info(f"Method 6 result: {len(decoded_match)} characters")
+                    return decoded_match
+        except Exception as e:
+            logger.warning(f"Method 6 failed: {e}")
+        
+        logger.error("All extraction methods failed")
+        return None, final_content, None
             
         except requests.RequestException as e:
             return False, None, f"Error fetching URL: {str(e)}"
@@ -273,22 +388,56 @@ class ChunkProcessor:
             logger.error(f"Failed to initialize Chrome driver: {e}")
             return False
     
-    def wait_for_fourth_fetch(self):
+    def wait_for_json_stability(self):
         """
-        Count fetch requests to index.NJ4tUjPs809
-        After 4th fetch = JSON ready for extraction
+        Monitor the JSON content in the copy button until it stops changing
+        This ensures we get the complete JSON regardless of fetch timing
         """
-        endpoint_pattern = "index.NJ4tUjPs809"
-        fetch_count = 0
-        seen_requests = set()  # Track unique requests to avoid duplicates
-        max_wait_time = 180  # 3 minute timeout
+        max_wait_time = 120  # 2 minutes max
         start_time = time.time()
+        stable_duration = 5  # JSON must be stable for 5 seconds
+        check_interval = 1  # Check every second
         
-        logger.info("Counting fetch requests for completion...")
-        logger.info("Waiting for 4th fetch request to index.NJ4tUjPs809...")
+        logger.info("Monitoring JSON content for stability...")
         
-        while fetch_count < 4:
+        previous_json_length = 0
+        last_change_time = time.time()
+        
+        while True:
+            current_time = time.time()
+            
             # Check timeout
+            if current_time - start_time > max_wait_time:
+                logger.warning("JSON stability monitoring timeout - using current content")
+                return True
+            
+            try:
+                # Find copy button and get JSON
+                copy_button = self.driver.find_element(By.CSS_SELECTOR, '[data-testid="stCodeCopyButton"]')
+                if copy_button:
+                    json_raw = copy_button.get_attribute('data-clipboard-text')
+                    current_length = len(json_raw) if json_raw else 0
+                    
+                    # Check if JSON content changed
+                    if current_length != previous_json_length:
+                        logger.info(f"JSON length changed: {previous_json_length} → {current_length}")
+                        previous_json_length = current_length
+                        last_change_time = current_time
+                    else:
+                        # JSON hasn't changed - check if stable period passed
+                        time_stable = current_time - last_change_time
+                        if time_stable >= stable_duration:
+                            logger.info(f"JSON stable for {stable_duration} seconds at {current_length} characters - complete!")
+                            return True
+                        else:
+                            logger.info(f"JSON stable for {time_stable:.1f}s - waiting for {stable_duration}s total")
+                
+            except Exception as e:
+                logger.warning(f"Error checking JSON: {e}")
+            
+            time.sleep(check_interval)
+        
+        return True Check timeout
             if time.time() - start_time > max_wait_time:
                 logger.warning("Timeout waiting for 4th fetch request - proceeding anyway")
                 return True  # Continue anyway
@@ -411,26 +560,22 @@ class ChunkProcessor:
                     EC.presence_of_element_located((By.CSS_SELECTOR, '[data-testid="stCodeCopyButton"]'))
                 )
                 
-                # Extract the JSON immediately after 4th fetch detection
-                logger.info("Extracting JSON output...")
-                json_output_raw = copy_button.get_attribute('data-clipboard-text')
+                # Extract the JSON using multiple retrieval methods
+                logger.info("Attempting multiple retrieval methods for complete JSON...")
+                json_output = self.extract_json_with_multiple_methods()
                 
-                if json_output_raw:
-                    # IMPORTANT: Decode HTML entities from the clipboard text
-                    json_output = html.unescape(json_output_raw)
-                    logger.info(f"Raw JSON length: {len(json_output_raw)} characters")
-                    logger.info(f"Decoded JSON length: {len(json_output)} characters")
-                    
+                if json_output:
                     try:
                         json.loads(json_output)  # Validate JSON
                         logger.info("Successfully retrieved and validated JSON output")
+                        logger.info(f"Final JSON length: {len(json_output)} characters")
                         return True, json_output, None
                     except json.JSONDecodeError as e:
-                        logger.error(f"Invalid JSON after decoding: {e}")
-                        logger.error(f"First 200 chars of decoded JSON: {json_output[:200]}")
+                        logger.error(f"Invalid JSON after all methods: {e}")
+                        logger.error(f"First 200 chars: {json_output[:200]}")
                         return False, None, "Invalid JSON received from chunk.dejan.ai"
                 else:
-                    return False, None, "No JSON output found in copy button"
+                    return False, None, "No JSON output found with any method"
                     
             except TimeoutException as e:
                 error_msg = f"Timeout on attempt {attempt + 1}: {str(e)}"

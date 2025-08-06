@@ -23,6 +23,55 @@ from datetime import datetime
 import pytz
 import platform
 import logging
+import streamlit as st
+from streamlit.web import cli as stcli
+import sys
+
+# Add this new API endpoint function
+def create_api_endpoint():
+    """Create a simple API endpoint for content extraction"""
+    if len(sys.argv) > 1 and sys.argv[1] == "api":
+        from flask import Flask, request, jsonify
+        import threading
+        
+        app = Flask(__name__)
+        
+        @app.route('/extract', methods=['POST'])
+        def extract_content_api():
+            try:
+                data = request.get_json()
+                url = data.get('url')
+                
+                if not url:
+                    return jsonify({"error": "URL is required"}), 400
+                
+                # Use your existing ContentExtractor
+                extractor = ContentExtractor()
+                success, content, error = extractor.extract_content(url)
+                
+                if success:
+                    return jsonify({
+                        "success": True,
+                        "extracted_content": content,
+                        "content_length": len(content)
+                    })
+                else:
+                    return jsonify({
+                        "success": False,
+                        "error": error
+                    }), 400
+                    
+            except Exception as e:
+                return jsonify({
+                    "success": False,
+                    "error": str(e)
+                }), 500
+        
+        app.run(host='0.0.0.0', port=8080)
+        return
+
+# Check if running in API mode
+create_api_endpoint()
 
 # --- Logging Configuration ---
 logging.basicConfig(level=logging.INFO)

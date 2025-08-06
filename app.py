@@ -154,7 +154,7 @@ class ChunkProcessor:
 def send_to_make(url, extracted_content):
     """Send extracted content to Make.com"""
     # TODO: Replace with your actual Make.com webhook URL
-    MAKECOM_WEBHOOK_URL = "https://hook.make.com/YOUR_WEBHOOK_ID_HERE"
+    MAKECOM_WEBHOOK_URL = "https://hook.eu2.make.com/jxfvib94vvnbavwt6p3w3g8e6egc4xmb"
     
     try:
         payload = {

@@ -1,11 +1,9 @@
 #!/usr/bin/env python3
 """
-Content Processing Web Application (Final Version)
+Content Processing Web Application (Final Version with Original UI)
 
-A Streamlit web app that scrapes full-length content from URLs and
-reliably processes them through chunk.dejan.ai to generate complete JSON chunks.
-This version incorporates all bug fixes and robust automation logic discovered
-during extensive testing.
+This script combines the final, robust backend logic with the original user
+interface design, including the two-column layout and three-tab results display.
 """
 
 import streamlit as st
@@ -37,11 +35,8 @@ st.set_page_config(
     layout="wide",
 )
 
-# --- Component 1: Content Extractor (Unchanged from Original) ---
+# --- Component 1: Content Extractor (From Original Script) ---
 class ContentExtractor:
-    """
-    Handles content extraction from websites using the exact logic from the JavaScript bookmarklet.
-    """
     def __init__(self):
         self.session = requests.Session()
         self.session.headers.update({
@@ -78,11 +73,8 @@ class ContentExtractor:
         except requests.RequestException as e:
             return False, None, f"Error fetching URL: {e}"
 
-# --- Component 2: The Upgraded Chunk Processor ---
+# --- Component 2: The Final, Upgraded Chunk Processor ---
 class ChunkProcessor:
-    """
-    Handles interaction with chunk.dejan.ai using the final, robust automation logic.
-    """
     def __init__(self, log_callback=None):
         self.driver = None
         self.log = log_callback if log_callback else logger.info
@@ -94,7 +86,6 @@ class ChunkProcessor:
         chrome_options.add_argument('--no-sandbox')
         chrome_options.add_argument('--disable-dev-shm-usage')
         chrome_options.add_argument('--disable-gpu')
-        # Grant clipboard permissions for headless mode, essential for the copy-paste method
         chrome_options.add_experimental_option("prefs", {"profile.default_content_setting_values.clipboard": 1})
         try:
             self.driver = webdriver.Chrome(options=chrome_options)
@@ -106,22 +97,17 @@ class ChunkProcessor:
 
     def _extract_json_from_button(self):
         try:
-            wait = WebDriverWait(self.driver, 180) # Generous 3-minute wait for the whole process
-            # Step 1: Wait for the H3 heading as the primary signal of completion.
+            wait = WebDriverWait(self.driver, 180)
             h3_xpath = "//h3[text()='Raw JSON Output']"
-            self.log("🔄 Waiting for results section to appear (by finding H3 heading)...")
+            self.log("🔄 Waiting for results section to appear...")
             wait.until(EC.presence_of_element_located((By.XPATH, h3_xpath)))
             self.log("✅ Results section is visible.")
-            
-            # Step 2: Wait for the copy button to exist.
             button_selector = "button[data-testid='stCodeCopyButton']"
-            self.log("...Waiting for the copy button to be added to the page...")
+            self.log("...Waiting for the copy button...")
             copy_button = wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, button_selector)))
             self.log("✅ Found the copy button element.")
-            
-            # Step 3: Poll the button's attribute to ensure it's fully populated.
-            self.log("...Polling button's 'data-clipboard-text' attribute for completeness...")
-            timeout = time.time() + 10 # Poll for up to 10 seconds
+            self.log("...Polling button's attribute for completeness...")
+            timeout = time.time() + 10
             final_content = ""
             while time.time() < timeout:
                 raw_content = copy_button.get_attribute('data-clipboard-text')
@@ -129,9 +115,6 @@ class ChunkProcessor:
                     final_content = raw_content; break
                 time.sleep(0.2)
             if not final_content: self.log("❌ Timed out polling the attribute."); return None
-            self.log("✅ Attribute is fully populated.")
-            
-            # Step 4: Decode the HTML entities from the string.
             self.log("...Decoding HTML entities...")
             decoded_content = html.unescape(final_content)
             self.log(f"✅ Extraction complete. Retrieved {len(decoded_content):,} characters.")
@@ -147,33 +130,23 @@ class ChunkProcessor:
             self.log(f"Navigating to `chunk.dejan.ai`...")
             self.driver.get("https://chunk.dejan.ai/")
             wait = WebDriverWait(self.driver, 30)
-            
-            # --- FINAL INPUT METHOD: COPY-PASTE ---
             self.log("Using JavaScript to copy full text to browser's clipboard...")
             self.driver.execute_script("navigator.clipboard.writeText(arguments[0]);", content)
-            self.log("✅ Content copied to clipboard.")
-            
-            self.log("Locating text area...")
+            self.log("Locating text area and clearing it...")
             textarea_selector = (By.CSS_SELECTOR, 'textarea[aria-label="Text to chunk:"]')
             input_field = wait.until(EC.element_to_be_clickable(textarea_selector))
             input_field.clear()
-            
-            self.log("Simulating a 'Paste' (Ctrl+V) command into the text area...")
+            self.log("Simulating a 'Paste' (Ctrl+V) command...")
             modifier_key = Keys.COMMAND if platform.system() == "Darwin" else Keys.CONTROL
             input_field.send_keys(modifier_key, "v")
-            self.log("✅ Paste command sent successfully.")
-
             self.log("Clicking submit button...")
             submit_button = wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, '[data-testid="stBaseButton-secondary"]')))
             submit_button.click()
-            
             json_output = self._extract_json_from_button()
-            
             if json_output:
                 return True, json_output, None
             else:
                 return False, None, "Failed to extract JSON from the results page."
-
         except Exception as e:
             return False, None, f"An unexpected error occurred during processing: {e}"
         finally:
@@ -185,75 +158,122 @@ class ChunkProcessor:
             self.driver.quit()
             self.log("✅ Browser closed.")
 
-# --- Main Application UI and Workflow ---
-def main():
-    st.title("🚀 Content Processing Automation")
-    st.markdown("Enter a URL to scrape its content, process it through `chunk.dejan.ai`, and extract the resulting JSON.")
-    st.info("This application now uses a robust copy-paste method to handle large content and a resilient polling mechanism to extract the complete JSON result.", icon="💡")
-
-    url_to_process = st.text_input(
-        "Enter the URL to process:",
-        "https://www.casinohawks.com/bonuses/bonus-code",
-        help="Enter a full URL of an article to scrape and process."
-    )
-
-    if st.button("🚀 Process URL", type="primary", use_container_width=True):
-        if not url_to_process:
-            st.error("Please enter a URL to process.")
-            return
-
-        st.subheader("📋 Real-time Processing Log")
-        log_messages = []
-        log_container = st.empty()
+# --- Main Workflow Function ---
+def process_url_workflow_with_logging(url, log_callback=None):
+    result = {'success': False, 'url': url, 'extracted_content': None, 'json_output': None, 'error': None}
+    
+    def log(message):
+        if log_callback: log_callback(message)
+        logger.info(message)
         
-        def log_callback(message):
-            utc_now = datetime.now(pytz.utc)
-            cest_tz = pytz.timezone('Europe/Malta')
-            cest_now = utc_now.astimezone(cest_tz)
-            log_messages.append(f"`{cest_now.strftime('%H:%M:%S')} (CEST) / {utc_now.strftime('%H:%M:%S')} (UTC)`: {message}")
-            log_container.info("\n\n".join(log_messages))
+    try:
+        log("🚀 Initializing content extractor...")
+        extractor = ContentExtractor()
+        log(f"🔍 Fetching and extracting content from: {url}")
+        success, content, error = extractor.extract_content(url)
+        if not success:
+            result['error'] = f"Content extraction failed: {error}"; return result
+        result['extracted_content'] = content
+        log(f"✅ Content extracted: {len(content):,} characters")
 
-        with st.spinner("Processing in progress... This may take several minutes for large content."):
-            # Step 1: Extract content
-            log_callback("Initializing ContentExtractor...")
-            extractor = ContentExtractor()
-            log_callback(f"Extracting content from: {url_to_process}")
-            success, content_to_submit, error = extractor.extract_content(url_to_process)
-            
-            if not success:
-                st.error(f"Failed to extract content: {error}")
+        log("🤖 Initializing chunk processor...")
+        processor = ChunkProcessor(log_callback=log)
+        success, json_output, error = processor.process_content(content)
+        if not success:
+            result['error'] = f"Chunk processing failed: {error}"; return result
+        
+        result['json_output'] = json_output
+        result['success'] = True
+        log("🎉 Workflow Complete!")
+        return result
+    except Exception as e:
+        log(f"💥 An unexpected error occurred in the workflow: {str(e)}")
+        result['error'] = f"An unexpected workflow error occurred: {str(e)}"
+        return result
+
+# --- Original Streamlit UI ---
+def main():
+    st.title("🔄 Content Processor")
+    st.markdown("**Automatically extract content from websites and generate JSON chunks**")
+    
+    debug_mode = st.sidebar.checkbox("🐛 Debug Mode", help="Show detailed processing logs")
+    st.markdown("---")
+    
+    col1, col2 = st.columns([2, 1])
+    
+    with col1:
+        url = st.text_input(
+            "Enter the URL to process:",
+            placeholder="https://www.casinohawks.com/bonuses/bonus-code",
+            help="Enter a complete URL including http:// or https://"
+        )
+        if st.button("🚀 Process URL", type="primary", use_container_width=True):
+            if not url:
+                st.error("Please enter a URL to process")
                 return
             
-            st.session_state['extracted_content'] = content_to_submit
-            log_callback(f"✅ Content extracted successfully ({len(content_to_submit):,} chars).")
+            with st.spinner("Processing your request... Please wait."):
+                log_placeholder = st.empty()
+                log_messages = []
 
-            # Step 2: Process content
-            processor = ChunkProcessor(log_callback=log_callback)
-            success, json_output, error = processor.process_content(content_to_submit)
-            
-            if not success:
-                st.error(f"Failed to process content: {error}")
-                return
+                def log_callback(message):
+                    utc_now = datetime.now(pytz.utc)
+                    cest_tz = pytz.timezone('Europe/Malta')
+                    cest_now = utc_now.astimezone(cest_tz)
+                    log_messages.append(f"`{cest_now.strftime('%H:%M:%S')} (CEST)`: {message}")
+                    with log_placeholder.container():
+                        st.info("\n\n".join(log_messages))
+                
+                result = process_url_workflow_with_logging(url, log_callback if debug_mode else None)
+                st.session_state['latest_result'] = result
 
-            st.session_state['json_output'] = json_output
-            log_callback("🎉 Workflow Complete!")
-            st.success("Processing complete! View the results below.")
-            
-    if 'json_output' in st.session_state:
+                if result['success']:
+                    st.success("Processing completed successfully!")
+                else:
+                    st.error(f"An error occurred: {result['error']}")
+
+    with col2:
+        st.subheader("ℹ️ How it works")
+        st.markdown("""
+        1.  **Extract**: Scrapes content from your URL.
+        2.  **Copy & Paste**: Submits the full text to `chunk.dejan.ai` via a robust copy-paste method.
+        3.  **Monitor**: Waits for the results to appear on the page.
+        4.  **Extract JSON**: Securely extracts the complete JSON from the button attribute.
+        5.  **Display**: Shows results below.
+        """)
+        st.info("💡 **Tip**: Works best with articles and can handle very long content.")
+
+    if 'latest_result' in st.session_state and st.session_state['latest_result']['success']:
+        result = st.session_state['latest_result']
         st.markdown("---")
         st.subheader("📊 Results")
-        tab1, tab2 = st.tabs(["🎯 JSON Output", "📄 Extracted Content"])
-
+        
+        tab1, tab2, tab3 = st.tabs(["🎯 JSON Output", "📄 Extracted Content", "📈 Summary"])
+        
         with tab1:
-            st.code(st.session_state['json_output'], language='json')
+            st.code(result['json_output'], language='json')
             st.download_button(
-                "💾 Download Full Extracted JSON",
-                data=st.session_state['json_output'],
+                label="💾 Download JSON",
+                data=result['json_output'],
                 file_name=f"chunks_{int(time.time())}.json",
                 mime="application/json"
             )
         with tab2:
-            st.text_area("Scraped Content Sent for Processing:", st.session_state.get('extracted_content', ''), height=300)
+            st.text_area("Raw extracted content:", value=result['extracted_content'], height=400)
+        with tab3:
+            st.subheader("Processing Summary")
+            try:
+                json_data = json.loads(result['json_output'])
+                big_chunks = json_data.get('big_chunks', [])
+                total_small_chunks = sum(len(chunk.get('small_chunks', [])) for chunk in big_chunks)
+                
+                colA, colB, colC = st.columns(3)
+                colA.metric("Big Chunks", len(big_chunks))
+                colB.metric("Total Small Chunks", total_small_chunks)
+                colC.metric("Content Length", f"{len(result['extracted_content']):,} chars")
+            except (json.JSONDecodeError, TypeError):
+                st.warning("Could not parse JSON for statistics.")
+            st.info(f"**Source URL**: {result['url']}")
 
 if __name__ == "__main__":
     main()

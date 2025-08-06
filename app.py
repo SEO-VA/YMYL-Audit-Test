@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
-Content Processing Web Application (Final Version with Original UI)
+Content Processing Web Application (Final Version with Working API)
 
 This script combines the final, robust backend logic with the original user
-interface design, including the two-column layout and three-tab results display.
+interface design, plus a working API endpoint for Make.com integration.
 """
 
 import streamlit as st
@@ -23,63 +23,10 @@ from datetime import datetime
 import pytz
 import platform
 import logging
-import streamlit as st
-from streamlit.web import cli as stcli
-import sys
-
-# Add this after your imports and before the main() function
-
-# Simple API endpoint using Streamlit query params
-def handle_api_request():
-    """Handle API-style requests using query parameters"""
-    query_params = st.query_params
-    
-    # Check if this is an API call
-    if "api" in query_params and "url" in query_params:
-        try:
-            url = query_params["url"]
-            
-            # Use your existing ContentExtractor
-            extractor = ContentExtractor()
-            success, content, error = extractor.extract_content(url)
-            
-            if success:
-                # Return JSON-like response
-                st.json({
-                    "success": True,
-                    "extracted_content": content,
-                    "content_length": len(content)
-                })
-                st.stop()  # Stop normal UI rendering
-            else:
-                st.json({
-                    "success": False,
-                    "error": error
-                })
-                st.stop()
-                
-        except Exception as e:
-            st.json({
-                "success": False,
-                "error": str(e)
-            })
-            st.stop()
-
-# Add this at the very beginning of your main() function
-def main():
-    # Check for API requests first
-    handle_api_request()
 
 # --- Logging Configuration ---
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
-
-# --- Streamlit Page Configuration ---
-st.set_page_config(
-    page_title="Content Processor",
-    page_icon="🚀",
-    layout="wide",
-)
 
 # --- Component 1: Content Extractor (From Original Script) ---
 class ContentExtractor:
@@ -237,8 +184,53 @@ def process_url_workflow_with_logging(url, log_callback=None):
         result['error'] = f"An unexpected workflow error occurred: {str(e)}"
         return result
 
-# --- Original Streamlit UI ---
+# --- API Handler Function ---
+def handle_api_request():
+    """Handle API-style requests using query parameters"""
+    try:
+        # Get URL parameters using the newer method
+        query_params = st.query_params
+        
+        # Check if this is an API call
+        if "api" in query_params and "url" in query_params:
+            url = query_params["url"]
+            
+            # Use your existing ContentExtractor
+            extractor = ContentExtractor()
+            success, content, error = extractor.extract_content(url)
+            
+            if success:
+                # Return JSON-like response
+                st.json({
+                    "success": True,
+                    "extracted_content": content,
+                    "content_length": len(content)
+                })
+                st.stop()  # Stop normal UI rendering
+            else:
+                st.json({
+                    "success": False,
+                    "error": error
+                })
+                st.stop()
+                
+    except Exception as e:
+        # If there's any error with API handling, continue with normal UI
+        # Don't show API errors to regular users
+        pass
+
+# --- Streamlit UI ---
 def main():
+    # IMPORTANT: Check for API requests FIRST, before any Streamlit configuration
+    handle_api_request()
+    
+    # Now proceed with normal Streamlit app configuration
+    st.set_page_config(
+        page_title="Content Processor",
+        page_icon="🚀",
+        layout="wide",
+    )
+    
     st.title("🔄 Content Processor")
     st.markdown("**Automatically extract content from websites and generate JSON chunks**")
     

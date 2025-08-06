@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
 """
-Content Processing Web Application with AI Integration
+Content Processing Web Application with Simple Make.com Integration
 
-This script combines content extraction with AI processing via Make.com integration.
-Users can extract content and then send it for AI analysis with a single button click.
+Simple version to test the connection between Streamlit and Make.com
 """
 
 import streamlit as st
@@ -151,34 +150,33 @@ class ChunkProcessor:
             self.driver.quit()
             self.log("✅ Browser closed.")
 
-# --- AI Processing Integration ---
-def send_to_ai_processing(url, extracted_content):
-    """Send extracted content to Make.com for AI processing"""
-    # Get webhook URL from session state
-    webhook_url = st.session_state.get('makecom_webhook_url', '')
-    
-    if not webhook_url or webhook_url == 'https://hook.make.com/YOUR_WEBHOOK_ID_HERE':
-        return False, "Please configure your Make.com webhook URL in the sidebar first."
+# --- Simple Make.com Integration ---
+def send_to_make(url, extracted_content):
+    """Send extracted content to Make.com"""
+    # TODO: Replace with your actual Make.com webhook URL
+    MAKECOM_WEBHOOK_URL = "https://hook.make.com/YOUR_WEBHOOK_ID_HERE"
     
     try:
         payload = {
             "url": url,
             "extracted_content": extracted_content,
             "content_length": len(extracted_content),
-            "timestamp": datetime.now().isoformat(),
-            "analysis_depth": st.session_state.get('analysis_depth', 'Standard'),
-            "output_format": st.session_state.get('output_format', 'Google Doc')
+            "timestamp": datetime.now().isoformat()
         }
         
-        response = requests.post(webhook_url, json=payload, timeout=30)
+        response = requests.post(
+            MAKECOM_WEBHOOK_URL,
+            json=payload,
+            timeout=30
+        )
         
         if response.status_code == 200:
-            return True, "Content sent for AI processing successfully!"
+            return True, "Content sent to Make.com successfully!"
         else:
-            return False, f"Error: HTTP {response.status_code} - {response.text}"
+            return False, f"Error: HTTP {response.status_code}"
             
     except requests.RequestException as e:
-        return False, f"Error sending to AI processor: {str(e)}"
+        return False, f"Error sending to Make.com: {str(e)}"
 
 # --- Main Workflow Function ---
 def process_url_workflow_with_logging(url, log_callback=None):
@@ -241,76 +239,22 @@ def handle_api_request():
     except Exception as e:
         pass
 
-# --- AI Configuration Sidebar ---
-def add_ai_configuration_sidebar():
-    """Add AI configuration options to sidebar"""
-    with st.sidebar:
-        st.markdown("---")
-        st.subheader("🤖 AI Processing Settings")
-        
-        # Make.com webhook URL configuration
-        webhook_url = st.text_input(
-            "Make.com Webhook URL:",
-            value=st.session_state.get('makecom_webhook_url', ''),
-            placeholder="https://hook.make.com/...",
-            help="Enter your Make.com webhook URL for AI processing"
-        )
-        
-        if webhook_url:
-            st.session_state['makecom_webhook_url'] = webhook_url
-            st.success("✅ Webhook URL configured")
-        else:
-            st.warning("⚠️ Configure webhook URL to enable AI processing")
-        
-        # AI Processing Options
-        analysis_depth = st.selectbox(
-            "Analysis Depth:",
-            ["Standard", "Deep Analysis", "Quick Overview"],
-            index=0,
-            help="Choose the depth of AI analysis"
-        )
-        st.session_state['analysis_depth'] = analysis_depth
-        
-        output_format = st.selectbox(
-            "Output Format:",
-            ["Google Doc", "PDF Report", "JSON Summary"],
-            index=0,
-            help="Choose how you want to receive results"
-        )
-        st.session_state['output_format'] = output_format
-        
-        # AI Processing Info
-        with st.expander("ℹ️ AI Processing Info"):
-            st.markdown("""
-            **What happens when you click 'Process with AI':**
-            
-            1. **Coordinator**: Analyzes content structure
-            2. **Analyzer**: Processes section by section
-            3. **Output Formatter**: Creates final formatted output
-            4. **Delivery**: Results sent via your chosen format
-            
-            **Processing time:** 2-5 minutes depending on content length
-            """)
-
-# --- Streamlit UI ---
+# --- Simple Streamlit UI ---
 def main():
     # Check for API requests first
     handle_api_request()
     
     # Page configuration
     st.set_page_config(
-        page_title="Content Processor with AI",
+        page_title="Content Processor",
         page_icon="🚀",
         layout="wide",
     )
     
-    st.title("🔄 Content Processor with AI Integration")
-    st.markdown("**Extract content from websites and process with AI analysis**")
+    st.title("🔄 Content Processor")
+    st.markdown("**Extract content from websites and send to Make.com**")
     
-    # Sidebar configuration
     debug_mode = st.sidebar.checkbox("🐛 Debug Mode", help="Show detailed processing logs")
-    add_ai_configuration_sidebar()
-    
     st.markdown("---")
     
     col1, col2 = st.columns([2, 1])
@@ -322,31 +266,7 @@ def main():
             help="Enter a complete URL including http:// or https://"
         )
         
-        col_process, col_ai_only = st.columns([3, 1])
-        
-        with col_process:
-            process_button = st.button("🚀 Extract Content", type="primary", use_container_width=True)
-        
-        with col_ai_only:
-            # Quick AI processing button for already extracted content
-            if 'latest_result' in st.session_state and st.session_state['latest_result']['success']:
-                ai_only_button = st.button("🤖 AI Process", use_container_width=True)
-                if ai_only_button:
-                    result = st.session_state['latest_result']
-                    with st.spinner("Sending content for AI processing..."):
-                        success, message = send_to_ai_processing(
-                            result['url'], 
-                            result['extracted_content']
-                        )
-                        
-                        if success:
-                            st.success(message)
-                            st.info("🔄 AI processing started! Check your configured output method.")
-                            st.session_state['ai_processing_sent'] = True
-                        else:
-                            st.error(f"❌ {message}")
-        
-        if process_button:
+        if st.button("🚀 Process URL", type="primary", use_container_width=True):
             if not url:
                 st.error("Please enter a URL to process")
                 return
@@ -365,61 +285,39 @@ def main():
                 
                 result = process_url_workflow_with_logging(url, log_callback if debug_mode else None)
                 st.session_state['latest_result'] = result
-                st.session_state['ai_processing_sent'] = False  # Reset AI processing status
 
                 if result['success']:
-                    st.success("Content extraction completed successfully!")
+                    st.success("Content processing completed successfully!")
                 else:
                     st.error(f"An error occurred: {result['error']}")
 
     with col2:
         st.subheader("ℹ️ How it works")
         st.markdown("""
-        **Content Extraction:**
-        1. **Extract**: Scrapes and formats content from your URL
-        2. **Process**: Generates JSON chunks via chunk.dejan.ai
-        3. **Display**: Shows structured results
-        
-        **AI Processing:**
-        4. **Analyze**: AI processes content section by section
-        5. **Coordinate**: AI creates processing plan
-        6. **Format**: AI generates final formatted output
-        7. **Deliver**: Results sent via your chosen method
+        1. **Extract**: Scrapes content from your URL
+        2. **Process**: Generates JSON chunks via chunk.dejan.ai  
+        3. **Send**: Optionally send to Make.com for further processing
         """)
-        st.info("💡 **Tip**: Configure your Make.com webhook URL in the sidebar to enable AI processing.")
+        st.info("💡 **Tip**: Configure Make.com webhook URL in the code to enable sending")
 
-    # Results Display
+    # Results Display - Only show if content is available
     if 'latest_result' in st.session_state and st.session_state['latest_result']['success']:
         result = st.session_state['latest_result']
         st.markdown("---")
+        st.subheader("📊 Results")
         
-        # Header with AI Processing Button
-        col_header, col_ai_button = st.columns([3, 1])
+        # Simple Send to Make.com button - only appears when content is available
+        if st.button("📤 Send to Make.com", type="secondary", use_container_width=True):
+            with st.spinner("Sending to Make.com..."):
+                success, message = send_to_make(result['url'], result['extracted_content'])
+                
+                if success:
+                    st.success(message)
+                else:
+                    st.error(f"❌ {message}")
         
-        with col_header:
-            st.subheader("📊 Results")
-        
-        with col_ai_button:
-            if st.button("🤖 Process with AI", type="primary", use_container_width=True):
-                with st.spinner("Sending content for AI processing..."):
-                    success, message = send_to_ai_processing(
-                        result['url'], 
-                        result['extracted_content']
-                    )
-                    
-                    if success:
-                        st.success(message)
-                        st.info("🔄 AI processing started! You'll receive results via your configured method.")
-                        st.session_state['ai_processing_sent'] = True
-                    else:
-                        st.error(f"❌ {message}")
-        
-        # Show AI processing status
-        if st.session_state.get('ai_processing_sent', False):
-            st.success("🤖 **AI Processing Status:** Content has been sent for analysis. Processing time: 2-5 minutes.")
-        
-        # Results tabs
-        tab1, tab2, tab3, tab4 = st.tabs(["🎯 JSON Output", "📄 Extracted Content", "🤖 AI Preview", "📈 Summary"])
+        # Simple tabs
+        tab1, tab2, tab3 = st.tabs(["🎯 JSON Output", "📄 Extracted Content", "📈 Summary"])
         
         with tab1:
             st.code(result['json_output'], language='json')
@@ -434,76 +332,18 @@ def main():
             st.text_area("Raw extracted content:", value=result['extracted_content'], height=400)
         
         with tab3:
-            st.subheader("🤖 Content Prepared for AI Analysis")
-            st.markdown("**This formatted content will be sent to your AI processing pipeline:**")
-            
-            # Show formatted preview
-            content_preview = result['extracted_content'][:800] + "..." if len(result['extracted_content']) > 800 else result['extracted_content']
-            st.code(content_preview, language='text')
-            
-            if len(result['extracted_content']) > 800:
-                with st.expander("Show complete content"):
-                    st.code(result['extracted_content'], language='text')
-            
-            # AI Processing Pipeline Info
-            st.markdown("---")
-            st.subheader("🔄 AI Processing Pipeline")
-            
-            col1, col2, col3 = st.columns(3)
-            with col1:
-                st.markdown("""
-                **1. Coordinator**
-                - Analyzes content structure
-                - Creates processing plan
-                - Identifies key sections
-                """)
-            
-            with col2:
-                st.markdown("""
-                **2. Analyzer** 
-                - Section-by-section analysis
-                - Detailed content review
-                - Structured insights
-                """)
-            
-            with col3:
-                st.markdown("""
-                **3. Output Formatter**
-                - Combines all analyses
-                - Formats final output
-                - Delivers via chosen method
-                """)
-        
-        with tab4:
             st.subheader("Processing Summary")
             try:
                 json_data = json.loads(result['json_output'])
                 big_chunks = json_data.get('big_chunks', [])
                 total_small_chunks = sum(len(chunk.get('small_chunks', [])) for chunk in big_chunks)
                 
-                col1, col2, col3, col4 = st.columns(4)
-                col1.metric("Big Chunks", len(big_chunks))
-                col2.metric("Total Small Chunks", total_small_chunks)
-                col3.metric("Content Length", f"{len(result['extracted_content']):,} chars")
-                col4.metric("Processing Time", "2-5 min")
-                
-                # AI Processing Readiness
-                st.markdown("---")
-                st.subheader("🤖 AI Processing Readiness")
-                
-                col_left, col_right = st.columns(2)
-                with col_left:
-                    st.metric("Sections for AI Analysis", len(big_chunks) if big_chunks else 1)
-                    st.metric("Content Format", "✅ H1/CONTENT structured")
-                
-                with col_right:
-                    webhook_configured = bool(st.session_state.get('makecom_webhook_url'))
-                    st.metric("Webhook Status", "✅ Configured" if webhook_configured else "⚠️ Not configured")
-                    st.metric("Analysis Depth", st.session_state.get('analysis_depth', 'Standard'))
-                
+                colA, colB, colC = st.columns(3)
+                colA.metric("Big Chunks", len(big_chunks))
+                colB.metric("Total Small Chunks", total_small_chunks)
+                colC.metric("Content Length", f"{len(result['extracted_content']):,} chars")
             except (json.JSONDecodeError, TypeError):
-                st.warning("Could not parse JSON for detailed statistics.")
-            
+                st.warning("Could not parse JSON for statistics.")
             st.info(f"**Source URL**: {result['url']}")
 
 if __name__ == "__main__":

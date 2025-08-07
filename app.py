@@ -949,6 +949,65 @@ async def process_ai_analysis_improved(json_output, api_key, log_callback=None):
         log(f"❌ {error_msg}")
         return False, error_msg, None
 
+async def process_ai_analysis_improved_with_settings(json_output, api_key, max_concurrent=3, max_retries=3, log_callback=None):
+    """Improved AI compliance analysis with custom settings."""
+    def log(message):
+        if log_callback: 
+            log_callback(message)
+        logger.info(message)
+    
+    try:
+        # Parse JSON and extract chunks
+        log("📊 Parsing JSON and extracting chunks...")
+        json_data = json.loads(json_output)
+        chunks = extract_big_chunks(json_data)
+        
+        if not chunks:
+            return False, "No chunks found in JSON data", None
+            
+        log(f"🚀 Starting improved parallel analysis of {len(chunks)} chunks...")
+        
+        # Create improved assistant client with custom settings
+        assistant_client = ImprovedAssistantClient(
+            api_key=api_key,
+            assistant_id=ANALYZER_ASSISTANT_ID,
+            max_concurrent=max_concurrent
+        )
+        assistant_client.max_retries = max_retries
+        
+        # Process chunks
+        results = await assistant_client.process_chunks_parallel(chunks)
+        
+        # Convert to format expected by existing code
+        analysis_results = []
+        for result in results:
+            analysis_results.append({
+                "success": result.success,
+                "content": result.content,
+                "error": result.error,
+                "chunk_index": result.chunk_index,
+                "tokens_used": result.tokens_used,
+                "processing_time": result.processing_time,
+                "retry_count": result.retry_count,
+                "status": result.status.value
+            })
+        
+        # Create final report using existing function
+        log("📝 Assembling final report...")
+        final_report = create_final_report_simple(analysis_results)
+        
+        log("🎉 Improved AI Analysis Complete!")
+        return True, final_report, analysis_results
+        
+    except json.JSONDecodeError as e:
+        error_msg = f"Invalid JSON format: {e}"
+        log(f"❌ {error_msg}")
+        return False, error_msg, None
+    except Exception as e:
+        error_msg = f"AI analysis error: {e}"
+        log(f"❌ {error_msg}")
+        return False, error_msg, None
+
 # --- Main Workflow Function ---
 def process_url_workflow_with_logging(url, log_callback=None):
     result = {'success': False, 'url': url, 'extracted_content': None, 'json_output': None, 'error': None}
@@ -1150,9 +1209,6 @@ def main():
                 start_time = time.time()
                 
                 with st.spinner("🤖 Running enhanced parallel analysis..."):
-                    # Update configuration with user settings
-                    global ANALYZER_ASSISTANT_ID
-                    
                     # Create improved assistant client with user settings
                     assistant_client = ImprovedAssistantClient(
                         api_key=api_key,
@@ -1161,10 +1217,12 @@ def main():
                     )
                     assistant_client.max_retries = max_retries
                     
-                    # Run improved AI analysis
-                    success, ai_result, analysis_details = asyncio.run(process_ai_analysis_improved(
+                    # Run improved AI analysis with custom settings
+                    success, ai_result, analysis_details = asyncio.run(process_ai_analysis_improved_with_settings(
                         result['json_output'], 
-                        api_key, 
+                        api_key,
+                        max_concurrent,
+                        max_retries,
                         None  # Disable callback since we have enhanced UI
                     ))
                 

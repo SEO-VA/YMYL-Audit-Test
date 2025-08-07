@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
-Content Processing Web Application (Final Version with Original UI)
+Content Processing Web Application (Updated with New Extraction Logic)
 
-This script combines the final, robust backend logic with the original user
-interface design, including the two-column layout and three-tab results display.
+This script combines the final, robust backend logic with the updated content
+extraction that captures H1, Subtitle, Lead, Article content, FAQ, and Author sections.
 """
 
 import streamlit as st
@@ -35,7 +35,7 @@ st.set_page_config(
     layout="wide",
 )
 
-# --- Component 1: Content Extractor (From Original Script) ---
+# --- Component 1: Updated Content Extractor ---
 class ContentExtractor:
     def __init__(self):
         self.session = requests.Session()
@@ -48,30 +48,85 @@ class ContentExtractor:
             response = self.session.get(url, timeout=30)
             response.raise_for_status()
             soup = BeautifulSoup(response.content, 'html.parser')
+            
             content_parts = []
-            main_container_selectors = ['article', 'main', '.content', '#content', '[role="main"]']
-            main_container = None
-            for selector in main_container_selectors:
-                main_container = soup.select_one(selector)
-                if main_container: break
-            if not main_container:
-                if len(soup.find_all('p')) > 3: main_container = soup.find_all('p')[0].parent
-                else: main_container = soup.body
-            for h1 in soup.find_all('h1'):
+            
+            # 1. Extract H1 (anywhere on page)
+            h1 = soup.find('h1')
+            if h1:
                 text = h1.get_text(separator='\n', strip=True)
-                if text: content_parts.append(f'H1: {text}')
-            for st_element in soup.select('.sub-title,.subtitle,[class*="sub-title"],[class*="subtitle"]'):
-                text = st_element.get_text(separator='\n', strip=True)
-                if text: content_parts.append(f'SUBTITLE: {text}')
-            for lead in soup.select('.lead,[class*="lead"]'):
+                if text:
+                    content_parts.append(f"H1: {text}")
+            
+            # 2. Extract Subtitle (anywhere on page)
+            subtitle = soup.find('span', class_=['sub-title', 'd-block'])
+            if subtitle:
+                text = subtitle.get_text(separator='\n', strip=True)
+                if text:
+                    content_parts.append(f"SUBTITLE: {text}")
+            
+            # 3. Extract Lead (anywhere on page)
+            lead = soup.find('p', class_='lead')
+            if lead:
                 text = lead.get_text(separator='\n', strip=True)
-                if text: content_parts.append(f'LEAD: {text}')
-            if main_container:
-                main_text = main_container.get_text(separator='\n', strip=True)
-                if main_text: content_parts.append(f'CONTENT: {main_text}')
-            return True, '\n\n'.join(content_parts) or "No content found", None
+                if text:
+                    content_parts.append(f"LEAD: {text}")
+            
+            # 4. Extract Article content
+            article = soup.find('article')
+            if article:
+                # Remove tab-content sections before processing
+                for tab_content in article.find_all('div', class_='tab-content'):
+                    tab_content.decompose()
+                
+                # Process all elements in document order within article
+                for element in article.find_all(['h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'span', 'p']):
+                    text = element.get_text(separator='\n', strip=True)
+                    if not text:
+                        continue
+                    
+                    # Check element type and add appropriate prefix
+                    if element.name == 'h1':
+                        content_parts.append(f"H1: {text}")
+                    elif element.name == 'h2':
+                        content_parts.append(f"H2: {text}")
+                    elif element.name == 'h3':
+                        content_parts.append(f"H3: {text}")
+                    elif element.name == 'h4':
+                        content_parts.append(f"H4: {text}")
+                    elif element.name == 'h5':
+                        content_parts.append(f"H5: {text}")
+                    elif element.name == 'h6':
+                        content_parts.append(f"H6: {text}")
+                    elif element.name == 'span' and 'sub-title' in element.get('class', []) and 'd-block' in element.get('class', []):
+                        content_parts.append(f"SUBTITLE: {text}")
+                    elif element.name == 'p' and 'lead' in element.get('class', []):
+                        content_parts.append(f"LEAD: {text}")
+                    elif element.name == 'p':
+                        content_parts.append(f"CONTENT: {text}")
+            
+            # 5. Extract FAQ section
+            faq_section = soup.find('section', attrs={'data-qa': 'templateFAQ'})
+            if faq_section:
+                text = faq_section.get_text(separator='\n', strip=True)
+                if text:
+                    content_parts.append(f"FAQ: {text}")
+            
+            # 6. Extract Author section
+            author_section = soup.find('section', attrs={'data-qa': 'templateAuthorCard'})
+            if author_section:
+                text = author_section.get_text(separator='\n', strip=True)
+                if text:
+                    content_parts.append(f"AUTHOR: {text}")
+            
+            # Join with double newlines to preserve spacing
+            final_content = '\n\n'.join(content_parts)
+            return True, final_content, None
+            
         except requests.RequestException as e:
             return False, None, f"Error fetching URL: {e}"
+        except Exception as e:
+            return False, None, f"Error processing content: {e}"
 
 # --- Component 2: The Final, Upgraded Chunk Processor ---
 class ChunkProcessor:
@@ -191,7 +246,7 @@ def process_url_workflow_with_logging(url, log_callback=None):
         result['error'] = f"An unexpected workflow error occurred: {str(e)}"
         return result
 
-# --- Original Streamlit UI ---
+# --- Streamlit UI ---
 def main():
     st.title("🔄 Content Processor")
     st.markdown("**Automatically extract content from websites and generate JSON chunks**")
@@ -240,13 +295,13 @@ def main():
     with col2:
         st.subheader("ℹ️ How it works")
         st.markdown("""
-        1.  **Extract**: Scrapes the full content from your URL.
+        1.  **Extract**: Scrapes content from H1, Subtitle, Lead, Article, FAQ, and Author sections.
         2.  **Copy & Paste**: Submits the text to `chunk.dejan.ai` using a robust copy-paste simulation.
         3.  **Monitor**: Waits for the `<h3>` result heading to appear.
         4.  **Extract JSON**: Securely polls and extracts the complete JSON from the copy button's data attribute.
         5.  **Display**: Shows results in the tabs below.
         """)
-        st.info("💡 **Tip**: This version is stable and can handle very long articles.")
+        st.info("💡 **Tip**: This version captures structured content in proper document order.")
 
     if 'latest_result' in st.session_state and st.session_state['latest_result'].get('success'):
         result = st.session_state['latest_result']

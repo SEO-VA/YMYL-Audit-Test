@@ -84,7 +84,7 @@ class ImprovedAssistantClient:
         self.client = OpenAI(api_key=api_key)
         self.assistant_id = assistant_id
         self.semaphore = asyncio.Semaphore(max_concurrent)
-        self.max_content_length = 32000  # Safe limit for assistant API
+        self.max_content_tokens = 30000  # Token-based limit (safer than character count)
         self.max_retries = 3
         self.base_delay = 1.0
         self.max_delay = 60.0
@@ -111,10 +111,22 @@ class ImprovedAssistantClient:
         return delay * jitter
 
     def _validate_content_length(self, content: str) -> bool:
-        """Check if content length is within API limits."""
-        return len(content) <= self.max_content_length
+        """Check if content token count is within API limits."""
+        # Rough estimate: 4 characters ≈ 1 token (more accurate than character count)
+        estimated_tokens = len(content) / 4
+        return estimated_tokens <= self.max_content_tokens
 
-    def _extract_assistant_response(self, thread_id: str) -> Optional[str]:
+    def _map_openai_status_to_assistant_status(self, openai_status: str) -> AssistantStatus:
+        """Map OpenAI run status to our AssistantStatus enum."""
+        status_mapping = {
+            'completed': AssistantStatus.SUCCESS,
+            'failed': AssistantStatus.ASSISTANT_ERROR,
+            'expired': AssistantStatus.TIMEOUT,
+            'cancelled': AssistantStatus.ASSISTANT_ERROR,
+            'incomplete': AssistantStatus.CONTENT_TOO_LONG,
+            'requires_action': AssistantStatus.ASSISTANT_ERROR,  # Not expected in our use case
+        }
+        return status_mapping.get(openai_status, AssistantStatus.UNKNOWN_ERROR)
         """Safely extract the latest assistant response from thread."""
         try:
             messages = self.client.beta.threads.messages.list(
@@ -137,7 +149,9 @@ class ImprovedAssistantClient:
             return None
 
     async def _wait_for_run_completion(self, thread_id: str, run_id: str, timeout: int = 300) -> Tuple[bool, Optional[Run]]:
-        """Wait for run completion with proper timeout and error handling."""
+        """Wait for run completion with proper timeout and error handling.
+        NOTE: This method is now deprecated in favor of create_and_poll() but kept for compatibility.
+        """
         start_time = time.time()
         attempt = 0
         
@@ -175,9 +189,10 @@ class ImprovedAssistantClient:
         
         # Validate content length
         if not self._validate_content_length(content):
+            estimated_tokens = len(content) / 4
             return AssistantResult(
                 success=False,
-                error=f"Content too long: {len(content)} chars (max: {self.max_content_length})",
+                error=f"Content too long: ~{estimated_tokens:.0f} tokens (max: {self.max_content_tokens})",
                 chunk_index=chunk_index,
                 status=AssistantStatus.CONTENT_TOO_LONG,
                 processing_time=time.time() - start_time
@@ -248,16 +263,18 @@ class ImprovedAssistantClient:
                 last_error = str(e)
                 error_msg = str(e).lower()
                 
-                # Classify error types
+                # Enhanced error classification with OpenAI-specific errors
                 if "rate limit" in error_msg or "429" in error_msg:
-                    status = AssistantStatus.RATE_LIMITED
-                    # Longer delay for rate limits
+                    mapped_status = AssistantStatus.RATE_LIMITED
                     delay = self._calculate_backoff_delay(attempt, 10.0)
                 elif "timeout" in error_msg or "connection" in error_msg:
-                    status = AssistantStatus.NETWORK_ERROR
+                    mapped_status = AssistantStatus.NETWORK_ERROR
                     delay = self._calculate_backoff_delay(attempt, 2.0)
+                elif "maximum context length" in error_msg or "too long" in error_msg:
+                    mapped_status = AssistantStatus.CONTENT_TOO_LONG
+                    delay = self._calculate_backoff_delay(attempt)
                 else:
-                    status = AssistantStatus.ASSISTANT_ERROR
+                    mapped_status = AssistantStatus.ASSISTANT_ERROR
                     delay = self._calculate_backoff_delay(attempt)
                 
                 logger.warning(f"Chunk {chunk_index} attempt {attempt + 1} failed: {e}")
@@ -267,15 +284,16 @@ class ImprovedAssistantClient:
                     logger.info(f"Retrying chunk {chunk_index} in {delay:.2f} seconds...")
                     await asyncio.sleep(delay)
         
-        # All retries exhausted
+        # All retries exhausted - use the last mapped status
         processing_time = time.time() - start_time
+        final_status = mapped_status if 'mapped_status' in locals() else AssistantStatus.ASSISTANT_ERROR
         logger.error(f"Failed to process chunk {chunk_index} after {self.max_retries} attempts: {last_error}")
         
         return AssistantResult(
             success=False,
             error=f"Failed after {self.max_retries} attempts: {last_error}",
             chunk_index=chunk_index,
-            status=AssistantStatus.ASSISTANT_ERROR,
+            status=final_status,
             processing_time=processing_time,
             retry_count=self.max_retries
         )
@@ -949,7 +967,7 @@ async def process_ai_analysis_improved(json_output, api_key, log_callback=None):
         log(f"❌ {error_msg}")
         return False, error_msg, None
 
-async def process_ai_analysis_improved_with_settings(json_output, api_key, max_concurrent=3, max_retries=3, log_callback=None):
+async def process_ai_analysis_improved_with_settings(json_output, api_key, max_concurrent=3, max_retries=3, max_tokens=30000, log_callback=None):
     """Improved AI compliance analysis with custom settings."""
     def log(message):
         if log_callback: 
@@ -974,6 +992,7 @@ async def process_ai_analysis_improved_with_settings(json_output, api_key, max_c
             max_concurrent=max_concurrent
         )
         assistant_client.max_retries = max_retries
+        assistant_client.max_content_tokens = max_tokens
         
         # Process chunks
         results = await assistant_client.process_chunks_parallel(chunks)
@@ -1082,6 +1101,15 @@ def main():
         value=3,
         help="Number of retry attempts for failed chunks"
     )
+    
+    max_tokens = st.sidebar.number_input(
+        "Max Content Tokens",
+        min_value=5000,
+        max_value=50000,
+        value=30000,
+        step=5000,
+        help="Maximum tokens per chunk (4 chars ≈ 1 token)"
+    )
 
     st.markdown("---")
     col1, col2 = st.columns([2, 1])
@@ -1183,9 +1211,11 @@ def main():
                     st.write(f"- API Key Status: {'✅ Valid' if api_key.startswith('sk-') else '❌ Invalid'}")
                     st.write(f"- Max Concurrent: `{max_concurrent}`")
                     st.write(f"- Max Retries: `{max_retries}`")
+                    st.write(f"- Max Tokens: `{max_tokens:,}`")
                     st.write("**Chunk Details:**")
                     for chunk in chunks:
-                        st.write(f"- Chunk {chunk['index']}: {len(chunk['text']):,} characters")
+                        estimated_tokens = len(chunk['text']) / 4
+                        st.write(f"- Chunk {chunk['index']}: {len(chunk['text']):,} chars (~{estimated_tokens:.0f} tokens)")
                 
                 # Progress tracking with enhanced metrics
                 total_chunks = len(chunks)
@@ -1223,6 +1253,7 @@ def main():
                         api_key,
                         max_concurrent,
                         max_retries,
+                        max_tokens,
                         None  # Disable callback since we have enhanced UI
                     ))
                 
@@ -1621,18 +1652,21 @@ def main():
             - Increase Max Concurrent (up to 10) if you have higher rate limits
             - Use Max Retries = 3 for reliability vs speed balance
             - Increase Max Retries for unreliable network connections
+            - Max Tokens: 30K is safe, reduce if content is too long
             
             ⚡ **Performance Optimization:**
             - Larger content = longer processing time (expected)
             - More chunks = better parallel efficiency
             - Monitor token usage to manage costs
             - Check success rates - 90%+ is excellent
+            - Token estimation: ~4 characters = 1 token
             
             🛠️ **Troubleshooting:**
             - Rate limit errors: Reduce Max Concurrent
-            - Timeout errors: Check internet connection
-            - Content too long errors: Content will be automatically truncated
+            - Timeout errors: Check internet connection, increase Max Retries
+            - Content too long errors: Reduce Max Tokens setting
             - Assistant errors: Verify your OpenAI API key has access to Assistants
+            - Token limit errors: Content will show estimated tokens in error message
             
             📊 **Understanding Results:**
             - Success Rate: Percentage of chunks successfully analyzed

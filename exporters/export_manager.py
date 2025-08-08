@@ -8,44 +8,13 @@ Coordinates multiple export formats and provides a unified interface.
 import time
 from datetime import datetime
 from typing import Dict, Optional, List, Any
+from exporters.html_exporter import HTMLExporter
+from exporters.word_exporter import WordExporter
+from exporters.pdf_exporter import PDFExporter
+from config.settings import DEFAULT_EXPORT_FORMATS
+from utils.logging_utils import setup_logger, format_processing_step
 
-# Fixed import paths - using absolute imports instead of relative
-try:
-    from exporters.html_exporter import HTMLExporter
-    HTML_AVAILABLE = True
-except ImportError:
-    HTML_AVAILABLE = False
-    HTMLExporter = None
-
-try:
-    from exporters.word_exporter import WordExporter
-    WORD_AVAILABLE = True
-except ImportError:
-    WORD_AVAILABLE = False
-    WordExporter = None
-
-try:
-    from exporters.pdf_exporter import PDFExporter
-    PDF_AVAILABLE = True
-except ImportError:
-    PDF_AVAILABLE = False
-    PDFExporter = None
-
-# Import settings with fallback
-try:
-    from config.settings import DEFAULT_EXPORT_FORMATS
-except ImportError:
-    DEFAULT_EXPORT_FORMATS = ["html", "pdf", "docx", "markdown"]
-
-# Import logging utils with fallback
-try:
-    from utils.logging_utils import setup_logger, format_processing_step
-    logger = setup_logger(__name__)
-except ImportError:
-    import logging
-    logger = logging.getLogger(__name__)
-    def format_processing_step(step, status="info", details=None):
-        return f"[{status.upper()}] {step}" + (f": {details}" if details else "")
+logger = setup_logger(__name__)
 
 
 class ExportManager:
@@ -62,16 +31,11 @@ class ExportManager:
     
     def __init__(self):
         """Initialize the ExportManager."""
-        self.exporters = {}
-        
-        # Initialize available exporters
-        if HTML_AVAILABLE and HTMLExporter:
-            self.exporters['html'] = HTMLExporter()
-        if WORD_AVAILABLE and WordExporter:
-            self.exporters['docx'] = WordExporter()
-        if PDF_AVAILABLE and PDFExporter:
-            self.exporters['pdf'] = PDFExporter()
-        
+        self.exporters = {
+            'html': HTMLExporter(),
+            'docx': WordExporter(),
+            'pdf': PDFExporter()
+        }
         self.supported_formats = list(self.exporters.keys()) + ['markdown']
         logger.info(f"ExportManager initialized with formats: {', '.join(self.supported_formats)}")
 
@@ -129,11 +93,6 @@ class ExportManager:
                     results['formats'][fmt] = markdown_content.encode('utf-8')
                     results['metadata']['formats_processed'].append(fmt)
                 else:
-                    # Check if exporter is available
-                    if fmt not in self.exporters:
-                        results['errors'][fmt] = f"Exporter for {fmt} not available"
-                        continue
-                    
                     # Use appropriate exporter
                     exporter = self.exporters[fmt]
                     exported_data = exporter.convert(markdown_content, title)
@@ -196,9 +155,6 @@ class ExportManager:
             if format_name == 'markdown':
                 exported_data = markdown_content.encode('utf-8')
             else:
-                if format_name not in self.exporters:
-                    return self._create_error_result(f"Exporter for {format_name} not available")
-                
                 exporter = self.exporters[format_name]
                 exported_data = exporter.convert(markdown_content, title)
             
@@ -244,7 +200,6 @@ class ExportManager:
                 'is_valid': self._validate_content(markdown_content)
             },
             'supported_formats': self.supported_formats,
-            'available_exporters': list(self.exporters.keys()),
             'format_estimates': {}
         }
         
@@ -254,7 +209,7 @@ class ExportManager:
                 if hasattr(exporter, 'get_document_info'):
                     info['format_estimates'][fmt_name] = exporter.get_document_info(markdown_content)
                 else:
-                    info['format_estimates'][fmt_name] = {'available': True}
+                    info['format_estimates'][fmt_name] = {'available': False}
             except Exception as e:
                 info['format_estimates'][fmt_name] = {'error': str(e)}
         
@@ -284,7 +239,6 @@ class ExportManager:
             'warnings': [],
             'valid_formats': [],
             'invalid_formats': [],
-            'unavailable_formats': [],
             'content_valid': False
         }
         
@@ -297,17 +251,13 @@ class ExportManager:
         # Validate formats
         for fmt in formats:
             if fmt in self.supported_formats:
-                if fmt == 'markdown' or fmt in self.exporters:
-                    validation['valid_formats'].append(fmt)
-                else:
-                    validation['unavailable_formats'].append(fmt)
-                    validation['warnings'].append(f"Exporter for {fmt} not available")
+                validation['valid_formats'].append(fmt)
             else:
                 validation['invalid_formats'].append(fmt)
                 validation['errors'].append(f"Unsupported format: {fmt}")
         
         if not validation['valid_formats']:
-            validation['errors'].append("No valid/available formats specified")
+            validation['errors'].append("No valid formats specified")
             validation['valid'] = False
         
         # Content size warnings
@@ -335,197 +285,7 @@ class ExportManager:
                 'features': ['responsive design', 'CSS styling', 'web browser compatible'],
                 'best_for': ['web viewing', 'sharing online', 'responsive display'],
                 'file_extension': '.html',
-                'mime_type': 'text/html',
-                'available': HTML_AVAILABLE
+                'mime_type': 'text/html'
             },
             'docx': {
-                'name': 'Microsoft Word',
-                'description': 'Editable business document',
-                'features': ['professional formatting', 'editable', 'widely supported'],
-                'best_for': ['business reports', 'editing', 'collaboration'],
-                'file_extension': '.docx',
-                'mime_type': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-                'available': WORD_AVAILABLE
-            },
-            'pdf': {
-                'name': 'PDF',
-                'description': 'Portable document format',
-                'features': ['fixed formatting', 'print-ready', 'universal compatibility'],
-                'best_for': ['presentations', 'archival', 'professional distribution'],
-                'file_extension': '.pdf',
-                'mime_type': 'application/pdf',
-                'available': PDF_AVAILABLE
-            },
-            'markdown': {
-                'name': 'Markdown',
-                'description': 'Plain text with formatting syntax',
-                'features': ['lightweight', 'version control friendly', 'platform independent'],
-                'best_for': ['developers', 'documentation', 'version control'],
-                'file_extension': '.md',
-                'mime_type': 'text/markdown',
-                'available': True  # Always available
-            }
-        }
-        
-        return capabilities
-
-    def _validate_formats(self, formats: List[str]) -> List[str]:
-        """
-        Validate and filter requested formats.
-        
-        Args:
-            formats (list): Requested formats
-            
-        Returns:
-            list: Valid formats only
-        """
-        valid_formats = []
-        for fmt in formats:
-            if fmt in self.supported_formats:
-                # Check if the exporter is actually available
-                if fmt == 'markdown' or fmt in self.exporters:
-                    valid_formats.append(fmt)
-                else:
-                    logger.warning(f"Skipping unavailable format: {fmt}")
-            else:
-                logger.warning(f"Skipping unsupported format: {fmt}")
-        
-        return valid_formats
-
-    def _validate_content(self, content: str) -> bool:
-        """
-        Validate markdown content.
-        
-        Args:
-            content (str): Content to validate
-            
-        Returns:
-            bool: True if valid, False otherwise
-        """
-        try:
-            if not content or not content.strip():
-                logger.error("Content is empty")
-                return False
-            
-            # Check for reasonable size limits
-            if len(content) > 5000000:  # 5MB limit
-                logger.error(f"Content too large: {len(content):,} characters")
-                return False
-            
-            return True
-            
-        except Exception as e:
-            logger.error(f"Content validation error: {e}")
-            return False
-
-    def _create_error_result(self, error_message: str) -> Dict[str, Any]:
-        """
-        Create standardized error result.
-        
-        Args:
-            error_message (str): Error description
-            
-        Returns:
-            dict: Error result structure
-        """
-        return {
-            'success': False,
-            'error': error_message,
-            'formats': {},
-            'metadata': {
-                'export_timestamp': datetime.now().isoformat(),
-                'error': error_message
-            }
-        }
-
-    def get_recommended_formats(self, use_case: str = "general") -> List[str]:
-        """
-        Get recommended export formats for different use cases.
-        
-        Args:
-            use_case (str): Use case ('general', 'business', 'web', 'archive')
-            
-        Returns:
-            list: Recommended formats (only available ones)
-        """
-        recommendations = {
-            'general': ['html', 'pdf', 'markdown'],
-            'business': ['docx', 'pdf'],
-            'web': ['html', 'markdown'],
-            'archive': ['pdf', 'html'],
-            'development': ['markdown', 'html'],
-            'presentation': ['pdf', 'html']
-        }
-        
-        # Filter recommendations to only include available formats
-        base_recommendations = recommendations.get(use_case, ['html', 'pdf', 'markdown'])
-        return [fmt for fmt in base_recommendations if fmt in self.supported_formats]
-
-    def create_filename(self, base_name: str, format_name: str, include_timestamp: bool = True) -> str:
-        """
-        Create appropriate filename for export format.
-        
-        Args:
-            base_name (str): Base filename (without extension)
-            format_name (str): Export format
-            include_timestamp (bool): Whether to include timestamp
-            
-        Returns:
-            str: Complete filename with extension
-        """
-        # Clean base name
-        clean_name = "".join(c for c in base_name if c.isalnum() or c in (' ', '-', '_')).strip()
-        clean_name = clean_name.replace(' ', '_').lower()
-        
-        # Add timestamp if requested
-        if include_timestamp:
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            clean_name = f"{clean_name}_{timestamp}"
-        
-        # Get file extension
-        capabilities = self.get_format_capabilities()
-        extension = capabilities.get(format_name, {}).get('file_extension', f'.{format_name}')
-        
-        return f"{clean_name}{extension}"
-
-    def get_export_statistics(self) -> Dict[str, Any]:
-        """
-        Get statistics about export capabilities and performance.
-        
-        Returns:
-            dict: Export statistics
-        """
-        capabilities = self.get_format_capabilities()
-        
-        stats = {
-            'supported_formats': len(self.supported_formats),
-            'available_exporters': len(self.exporters),
-            'formats': self.supported_formats,
-            'available_formats': [fmt for fmt, cap in capabilities.items() if cap.get('available', False)],
-            'unavailable_formats': [fmt for fmt, cap in capabilities.items() if not cap.get('available', True)],
-            'capabilities': capabilities,
-            'recommendations': {
-                use_case: self.get_recommended_formats(use_case)
-                for use_case in ['general', 'business', 'web', 'archive', 'development', 'presentation']
-            }
-        }
-        
-        return stats
-
-    def cleanup(self):
-        """Clean up any resources used by exporters."""
-        try:
-            for exporter in self.exporters.values():
-                if hasattr(exporter, 'cleanup'):
-                    exporter.cleanup()
-            logger.info("ExportManager cleanup completed")
-        except Exception as e:
-            logger.warning(f"Error during cleanup: {e}")
-
-    def __enter__(self):
-        """Context manager entry."""
-        return self
-
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        """Context manager exit with cleanup."""
-        self.cleanup()
+                'name

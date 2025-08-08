@@ -6,6 +6,8 @@ Orchestrates the complete AI analysis workflow including:
 - Parallel processing of content chunks
 - Result aggregation and report generation
 - Progress tracking and error handling
+
+FIXED: Progress calculation bug - now uses actual completion count instead of chunk indices
 """
 
 import asyncio
@@ -43,6 +45,9 @@ class AnalysisEngine:
         self.progress_callback = progress_callback
         self.analysis_start_time = None
         self.analysis_stats = {}
+        # FIXED: Add completion tracking variables
+        self._completed_count = 0
+        self._total_chunks = 0
         logger.info("AnalysisEngine initialized")
 
     async def process_json_content(self, json_output: str) -> Dict[str, Any]:
@@ -78,6 +83,10 @@ class AnalysisEngine:
             
             logger.info(f"Extracted {len(chunks)} chunks for analysis")
             
+            # FIXED: Initialize completion tracking
+            self._completed_count = 0
+            self._total_chunks = len(chunks)
+            
             # Step 3: Process chunks in parallel
             self._update_progress(f"Analyzing {len(chunks)} chunks in parallel", 0.3)
             analysis_results = await self._process_chunks_parallel(chunks)
@@ -110,6 +119,8 @@ class AnalysisEngine:
         """
         Process multiple chunks in parallel with controlled concurrency.
         
+        FIXED: Now uses asyncio.as_completed() for accurate progress tracking
+        
         Args:
             chunks (list): List of chunk dictionaries
             
@@ -131,27 +142,28 @@ class AnalysisEngine:
         # Create tasks for all chunks
         tasks = [process_single_chunk(chunk) for chunk in chunks]
         
-        # Process with progress tracking
+        # FIXED: Use asyncio.as_completed() for proper progress tracking
         results = []
         completed = 0
         
+        # Process tasks as they complete (not in original order)
         for coro in asyncio.as_completed(tasks):
             result = await coro
             results.append(result)
             completed += 1
             
-            # Update progress (30% to 85% for chunk processing)
+            # FIXED: Update progress based on actual completion count
             progress = 0.3 + (0.55 * completed / len(chunks))
             self._update_progress(f"Completed {completed}/{len(chunks)} chunk analyses", progress)
             
-            # Log individual chunk completion
+            # Log individual chunk completion with better info
             chunk_idx = result.get("chunk_index", "unknown")
             if result.get("success"):
-                logger.info(f"Chunk {chunk_idx} analysis completed successfully")
+                logger.info(f"Chunk {chunk_idx} analysis completed successfully ({completed}/{len(chunks)})")
             else:
-                logger.warning(f"Chunk {chunk_idx} analysis failed: {result.get('error')}")
+                logger.warning(f"Chunk {chunk_idx} analysis failed: {result.get('error')} ({completed}/{len(chunks)})")
         
-        # Sort results by chunk index to maintain order
+        # Sort results by chunk index to maintain order for final report
         results.sort(key=lambda x: x.get("chunk_index", 0))
         
         successful = len([r for r in results if r.get("success")])

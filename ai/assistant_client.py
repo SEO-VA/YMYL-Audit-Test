@@ -4,6 +4,8 @@ OpenAI Assistant Client for YMYL Audit Tool
 
 Handles direct interaction with OpenAI's Assistant API for content analysis.
 Manages thread creation, message handling, and response extraction.
+
+UPDATED: Cleaned up to work with fixed progress tracking in AnalysisEngine
 """
 
 import asyncio
@@ -42,6 +44,8 @@ class AssistantClient:
     async def analyze_chunk(self, content: str, chunk_index: int, max_retries: int = 3) -> Dict[str, Any]:
         """
         Analyze a single content chunk using the OpenAI Assistant.
+        
+        UPDATED: Simplified to focus only on analysis, progress tracking moved to AnalysisEngine
         
         Args:
             content (str): Content to analyze

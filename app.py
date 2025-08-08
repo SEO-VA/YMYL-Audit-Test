@@ -45,7 +45,7 @@ def clear_analysis_session_state():
     """
     Clear all analysis-related session state data.
     
-    ENHANCED: Also clear input mode tracking data
+    FIXED: Enhanced cleanup to prevent media file storage errors
     """
     keys_to_clear = [
         "latest_result",
@@ -54,7 +54,7 @@ def clear_analysis_session_state():
         "ai_stats",
         "analysis_statistics",
         "current_url_analysis",
-        "current_input_analysis_mode",  # NEW: Track input mode
+        "current_input_analysis_mode",
         "processing_start_time",
         "chunk_analysis_results"
     ]
@@ -65,8 +65,21 @@ def clear_analysis_session_state():
             del st.session_state[key]
             cleared_count += 1
     
+    # FIXED: Also clear any download-related keys to prevent media file errors
+    download_keys_to_clear = []
+    for key in st.session_state.keys():
+        if key.startswith('download_') or key.startswith('backup_download_'):
+            download_keys_to_clear.append(key)
+    
+    for key in download_keys_to_clear:
+        try:
+            del st.session_state[key]
+            cleared_count += 1
+        except:
+            pass  # Ignore errors when clearing download keys
+    
     if cleared_count > 0:
-        logger.info(f"Cleared {cleared_count} stale session state keys")
+        logger.info(f"Cleared {cleared_count} stale session state keys (including download keys)")
     
     return cleared_count
 

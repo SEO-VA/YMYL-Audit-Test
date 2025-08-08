@@ -4,13 +4,13 @@ UI Components for YMYL Audit Tool
 
 Reusable Streamlit UI components for the application interface.
 
-FIXED: Enhanced components to support stale AI results prevention and better user feedback
+NEW FEATURE: Dual input mode - URL extraction OR direct JSON input
 """
 
 import streamlit as st
 import time
 from datetime import datetime
-from typing import Dict, Any, Optional, List, Callable
+from typing import Dict, Any, Optional, List, Callable, Tuple
 from config.settings import DEFAULT_TIMEZONE
 from utils.logging_utils import log_with_timestamp
 from exporters.export_manager import ExportManager
@@ -43,7 +43,7 @@ def create_sidebar_config(debug_mode_default: bool = True) -> Dict[str, Any]:
     # FIXED: Add session state management options
     with st.sidebar.expander("🧹 Session Management"):
         if st.button("Clear All Analysis Data", help="Clear all stored analysis results"):
-            keys_to_clear = [k for k in st.session_state.keys() if k.startswith(('latest_', 'ai_', 'current_url', 'processing_'))]
+            keys_to_clear = [k for k in st.session_state.keys() if k.startswith(('latest_', 'ai_', 'current_url', 'processing_', 'input_'))]
             for key in keys_to_clear:
                 del st.session_state[key]
             st.success(f"Cleared {len(keys_to_clear)} session keys")
@@ -77,23 +77,42 @@ def create_how_it_works_section():
     """Create the 'How it works' information section."""
     st.subheader("ℹ️ How it works")
     st.markdown("""
-1. **Extract**: Extract the content from the webpage.
-2. **Chunk**: Send extracted text to Chunk Norris for processing.
+1. **Choose Input**: Extract from URL OR provide chunked JSON directly.
+2. **Process**: Extract content or validate provided chunks.
 3. **YMYL Analysis**: AI-powered YMYL audit of the content.
 4. **Export**: Generate professional reports in multiple formats.
 """)
-    st.info("💡 **New**: AI-powered YMYL compliance analysis with multi-format export!")
+    st.info("💡 **New**: Choose between URL extraction or direct JSON input!")
 
-def create_url_input_section() -> tuple[str, bool]:
+def create_dual_input_section() -> Tuple[str, str, bool]:
     """
-    Create URL input section with processing button.
-    
-    FIXED: Enhanced with current context display and warnings
+    NEW FEATURE: Create dual input section with URL/Direct JSON toggle.
     
     Returns:
-        tuple: (url, process_clicked)
+        tuple: (input_mode, content, process_clicked)
     """
-    # FIXED: Show current analysis context if available
+    st.subheader("📝 Content Input")
+    
+    # Input mode selection
+    input_mode = st.radio(
+        "Choose your input method:",
+        ["🌐 URL Input", "📄 Direct JSON"],
+        horizontal=True,
+        help="Extract content from a URL or provide pre-chunked JSON directly",
+        key="input_mode_selector"
+    )
+    
+    # Store input mode in session state for tracking
+    st.session_state['input_mode'] = input_mode
+    
+    if input_mode == "🌐 URL Input":
+        return _create_url_input_mode()
+    else:
+        return _create_direct_json_input_mode()
+
+def _create_url_input_mode() -> Tuple[str, str, bool]:
+    """Create URL input interface."""
+    # Show current analysis context if available
     current_url = st.session_state.get('current_url_analysis')
     if current_url:
         st.info(f"📋 **Currently analyzing**: {current_url}")
@@ -110,14 +129,14 @@ def create_url_input_section() -> tuple[str, bool]:
         url = st.text_input(
             "Enter the URL to process:", 
             help="Include http:// or https:// - Processing a new URL will clear previous AI analysis results",
-            placeholder="https://example.com/page-to-analyze"
+            placeholder="https://example.com/page-to-analyze",
+            key="url_input"
         )
     
     with col2:
         st.markdown("<br>", unsafe_allow_html=True)  # Spacing to align with input
         
-        # FIXED: Show warning if URL is different from current analysis
-        button_type = "primary"
+        # Show warning if URL is different from current analysis
         button_help = "Process the URL to extract content and prepare for AI analysis"
         
         if current_url and url and url != current_url:
@@ -126,12 +145,87 @@ def create_url_input_section() -> tuple[str, bool]:
         
         process_clicked = st.button(
             "🚀 Process URL", 
-            type=button_type, 
+            type="primary", 
             use_container_width=True,
-            help=button_help
+            help=button_help,
+            key="process_url_button"
         )
     
-    return url, process_clicked
+    return 'url', url, process_clicked
+
+def _create_direct_json_input_mode() -> Tuple[str, str, bool]:
+    """NEW FEATURE: Create direct JSON input interface."""
+    st.markdown("**Paste your pre-chunked JSON content:**")
+    
+    # Show current analysis context for direct JSON
+    current_input_mode = st.session_state.get('current_input_analysis_mode')
+    if current_input_mode == 'direct_json':
+        st.info("📋 **Currently analyzing**: Direct JSON input")
+        
+        # Check if we have AI results for this input
+        ai_result = st.session_state.get('ai_analysis_result')
+        if ai_result and ai_result.get('success'):
+            analysis_time = ai_result.get('processing_time', 0)
+            st.success(f"✅ **AI Analysis Complete** for direct JSON (took {analysis_time:.1f}s)")
+    
+    # Large text area for JSON input
+    json_content = st.text_area(
+        "JSON Content",
+        height=300,
+        placeholder='''{
+  "big_chunks": [
+    {
+      "big_chunk_index": 1,
+      "small_chunks": [
+        "Your first chunk of content here...",
+        "Additional content for this chunk...",
+        "More content..."
+      ]
+    },
+    {
+      "big_chunk_index": 2,
+      "small_chunks": [
+        "Second chunk content...",
+        "More content for second chunk..."
+      ]
+    }
+  ]
+}''',
+        help="Paste your chunked JSON content here. The tool expects the standard chunk format.",
+        key="direct_json_input"
+    )
+    
+    # Show character count and basic info
+    if json_content:
+        char_count = len(json_content)
+        st.caption(f"📊 Content length: {char_count:,} characters")
+        
+        # Try to give quick preview of chunk count
+        try:
+            import json
+            parsed = json.loads(json_content)
+            chunk_count = len(parsed.get('big_chunks', []))
+            st.caption(f"📦 Detected: {chunk_count} chunks")
+        except:
+            st.caption("⚠️ JSON format validation will occur during processing")
+    
+    # Process button
+    col1, col2 = st.columns([2, 1])
+    
+    with col1:
+        st.markdown("")  # Spacing
+    
+    with col2:
+        process_clicked = st.button(
+            "🤖 Analyze JSON", 
+            type="primary", 
+            use_container_width=True,
+            help="Process the provided JSON content directly with AI analysis",
+            key="process_json_button",
+            disabled=not json_content.strip()
+        )
+    
+    return 'direct_json', json_content, process_clicked
 
 def create_debug_logger(placeholder) -> Callable[[str], None]:
     """
@@ -178,11 +272,11 @@ def create_ai_analysis_section(api_key: Optional[str], json_output: str, source_
     """
     Create AI analysis section with processing button.
     
-    FIXED: Enhanced validation and user feedback for stale results prevention
+    ENHANCED: Works with both URL and direct JSON input modes
     
     Args:
         api_key (str): OpenAI API key
-        json_output (str): JSON output from chunk processing
+        json_output (str): JSON output from chunk processing or direct input
         source_result (dict): Source processing result for validation
         
     Returns:
@@ -192,7 +286,8 @@ def create_ai_analysis_section(api_key: Optional[str], json_output: str, source_
         st.info("💡 **Tip**: Add your OpenAI API key to enable AI compliance analysis!")
         return False
     
-    # FIXED: Enhanced AI analysis section with better feedback
+    # ENHANCED: Show different messaging based on input mode
+    input_mode = st.session_state.get('input_mode', '🌐 URL Input')
     st.markdown("### 🤖 AI Compliance Analysis")
     
     # Show analysis readiness status
@@ -205,12 +300,15 @@ def create_ai_analysis_section(api_key: Optional[str], json_output: str, source_
             col1, col2 = st.columns([2, 1])
             
             with col1:
-                st.write(f"📊 **Content Ready**: {chunk_count} chunks prepared for AI analysis")
+                if input_mode == "🌐 URL Input":
+                    st.write(f"📊 **Content Ready**: {chunk_count} chunks extracted from URL")
+                else:
+                    st.write(f"📊 **Content Ready**: {chunk_count} chunks provided directly")
                 
                 # Check for existing AI results
                 ai_result = st.session_state.get('ai_analysis_result')
                 if ai_result and ai_result.get('success'):
-                    # FIXED: Validate freshness of AI results
+                    # Validate freshness of AI results
                     is_fresh = True
                     if source_result:
                         source_timestamp = source_result.get('processing_timestamp', 0)
@@ -227,7 +325,7 @@ def create_ai_analysis_section(api_key: Optional[str], json_output: str, source_
                 button_type = "secondary"
                 button_help = "Analyze content for YMYL compliance using AI"
                 
-                # FIXED: Customize button based on current state
+                # Customize button based on current state
                 ai_result = st.session_state.get('ai_analysis_result')
                 if ai_result and ai_result.get('success'):
                     if source_result:
@@ -245,21 +343,25 @@ def create_ai_analysis_section(api_key: Optional[str], json_output: str, source_
                     button_label,
                     type=button_type, 
                     use_container_width=True,
-                    help=button_help
+                    help=button_help,
+                    key="ai_analysis_button"
                 )
                 
         except json.JSONDecodeError:
             st.error("❌ Invalid JSON output - cannot proceed with AI analysis")
             return False
     else:
-        st.info("📝 Process a URL first to enable AI analysis")
+        if input_mode == "🌐 URL Input":
+            st.info("📝 Process a URL first to enable AI analysis")
+        else:
+            st.info("📝 Provide JSON content first to enable AI analysis")
         return False
 
 def create_content_freshness_indicator(content_result: Dict, ai_result: Optional[Dict] = None):
     """
     Create indicator showing freshness of analysis results.
     
-    FIXED: New component to show relationship between content and AI results
+    ENHANCED: Works with both URL and direct JSON inputs
     
     Args:
         content_result (dict): Content processing result
@@ -271,10 +373,10 @@ def create_content_freshness_indicator(content_result: Dict, ai_result: Optional
     # Check timestamps
     content_timestamp = content_result.get('processing_timestamp', 0)
     ai_timestamp = ai_result.get('processing_timestamp', -1)
-    content_url = content_result.get('url', '')
-    ai_url = ai_result.get('source_url', '')
+    content_source = content_result.get('url', content_result.get('source', 'Unknown'))
+    ai_source = ai_result.get('source_url', '')
     
-    is_fresh = (content_timestamp == ai_timestamp and content_url == ai_url)
+    is_fresh = (content_timestamp == ai_timestamp)
     
     if is_fresh:
         st.success("✅ **AI Results Match Current Content** - Analysis is up to date")
@@ -284,20 +386,20 @@ def create_content_freshness_indicator(content_result: Dict, ai_result: Optional
         with st.expander("🔍 Freshness Details"):
             st.write(f"**Content Timestamp**: {content_timestamp}")
             st.write(f"**AI Analysis Timestamp**: {ai_timestamp}")
-            st.write(f"**Content URL**: {content_url}")
-            st.write(f"**AI Analysis URL**: {ai_url}")
+            st.write(f"**Content Source**: {content_source}")
+            st.write(f"**AI Analysis Source**: {ai_source}")
 
 def create_results_tabs(result: Dict[str, Any], ai_result: Optional[Dict[str, Any]] = None):
     """
     Create results display tabs.
     
-    FIXED: Enhanced with freshness validation and better user guidance
+    ENHANCED: Shows appropriate context for URL vs Direct JSON inputs
     
     Args:
         result (dict): Processing results
         ai_result (dict): AI analysis results (optional)
     """
-    # FIXED: Show freshness indicator before tabs
+    # Show freshness indicator before tabs
     if ai_result and ai_result.get('success'):
         create_content_freshness_indicator(result, ai_result)
     
@@ -307,7 +409,7 @@ def create_results_tabs(result: Dict[str, Any], ai_result: Optional[Dict[str, An
             "🎯 AI Compliance Report", 
             "📊 Individual Analyses", 
             "🔧 JSON Output", 
-            "📄 Extracted Content", 
+            "📄 Source Content", 
             "📈 Summary"
         ])
         
@@ -330,7 +432,7 @@ def create_results_tabs(result: Dict[str, Any], ai_result: Optional[Dict[str, An
         # Without AI analysis results
         tab1, tab2, tab3 = st.tabs([
             "🎯 JSON Output", 
-            "📄 Extracted Content", 
+            "📄 Source Content", 
             "📈 Summary"
         ])
         
@@ -347,11 +449,11 @@ def _create_ai_report_tab(ai_result: Dict[str, Any], content_result: Optional[Di
     """
     Create AI compliance report tab content.
     
-    FIXED: Enhanced with freshness validation and metadata display
+    ENHANCED: Shows appropriate source information for both input modes
     """
     st.markdown("### YMYL Compliance Analysis Report")
     
-    # FIXED: Show analysis metadata and freshness info
+    # Show analysis metadata and freshness info
     if content_result:
         col1, col2, col3 = st.columns(3)
         
@@ -360,12 +462,12 @@ def _create_ai_report_tab(ai_result: Dict[str, Any], content_result: Optional[Di
             st.metric("Processing Time", f"{processing_time:.2f}s")
         
         with col2:
-            source_url = ai_result.get('source_url', content_result.get('url', 'Unknown'))
+            source_url = ai_result.get('source_url', content_result.get('url', 'Direct JSON Input'))
             if len(source_url) > 30:
-                display_url = source_url[:30] + "..."
+                display_source = source_url[:30] + "..."
             else:
-                display_url = source_url
-            st.metric("Source URL", display_url)
+                display_source = source_url
+            st.metric("Source", display_source)
         
         with col3:
             timestamp_match = (
@@ -519,21 +621,50 @@ def _create_json_tab(result: Dict[str, Any]):
     )
 
 def _create_content_tab(result: Dict[str, Any]):
-    """Create extracted content tab content."""
-    st.text_area(
-        "Raw extracted content:", 
-        value=result['extracted_content'], 
-        height=400,
-        help="Original content extracted from the webpage"
-    )
+    """
+    Create source content tab content.
+    
+    ENHANCED: Shows appropriate content based on input mode
+    """
+    input_mode = st.session_state.get('input_mode', '🌐 URL Input')
+    
+    if input_mode == "🌐 URL Input":
+        st.markdown("**Extracted content from URL:**")
+        st.text_area(
+            "Raw extracted content:", 
+            value=result['extracted_content'], 
+            height=400,
+            help="Original content extracted from the webpage"
+        )
+    else:
+        st.markdown("**Direct JSON input provided:**")
+        st.info("Content was provided directly as chunked JSON. See JSON Output tab for the processed format.")
+        
+        # Show some basic stats about the direct input
+        try:
+            import json
+            data = json.loads(result['json_output'])
+            chunks = data.get('big_chunks', [])
+            total_content = sum(len('\n'.join(chunk.get('small_chunks', []))) for chunk in chunks)
+            
+            col1, col2 = st.columns(2)
+            with col1:
+                st.metric("Total Chunks Provided", len(chunks))
+            with col2:
+                st.metric("Total Content Length", f"{total_content:,} chars")
+                
+        except:
+            st.warning("Could not analyze the provided JSON structure.")
 
 def _create_summary_tab(result: Dict[str, Any], ai_result: Optional[Dict[str, Any]] = None):
     """
     Create processing summary tab content.
     
-    FIXED: Enhanced with freshness indicators and better metrics display
+    ENHANCED: Shows different metrics based on input mode
     """
     st.subheader("Processing Summary")
+    
+    input_mode = st.session_state.get('input_mode', '🌐 URL Input')
     
     # Parse JSON for chunk statistics
     try:
@@ -542,12 +673,20 @@ def _create_summary_tab(result: Dict[str, Any], ai_result: Optional[Dict[str, An
         big_chunks = json_data.get('big_chunks', [])
         total_small_chunks = sum(len(chunk.get('small_chunks', [])) for chunk in big_chunks)
         
-        # Content extraction metrics
-        st.markdown("#### Content Extraction")
-        colA, colB, colC = st.columns(3)
-        colA.metric("Big Chunks", len(big_chunks))
-        colB.metric("Total Small Chunks", total_small_chunks)
-        colC.metric("Content Length", f"{len(result['extracted_content']):,} chars")
+        # Content processing metrics
+        if input_mode == "🌐 URL Input":
+            st.markdown("#### URL Content Extraction")
+            colA, colB, colC = st.columns(3)
+            colA.metric("Big Chunks", len(big_chunks))
+            colB.metric("Total Small Chunks", total_small_chunks)
+            colC.metric("Extracted Length", f"{len(result.get('extracted_content', '')):,} chars")
+        else:
+            st.markdown("#### Direct JSON Input")
+            colA, colB, colC = st.columns(3)
+            colA.metric("Big Chunks", len(big_chunks))
+            colB.metric("Total Small Chunks", total_small_chunks)
+            total_content = sum(len('\n'.join(chunk.get('small_chunks', []))) for chunk in big_chunks)
+            colC.metric("Total Content", f"{total_content:,} chars")
         
         # AI Analysis metrics (if available)
         if ai_result and ai_result.get('success'):
@@ -560,7 +699,7 @@ def _create_summary_tab(result: Dict[str, Any], ai_result: Optional[Dict[str, An
             colF.metric("Failed Analyses", stats.get('failed_analyses', 0))
             colG.metric("Success Rate", f"{stats.get('success_rate', 0):.1f}%")
             
-            # FIXED: Show freshness status in summary
+            # Show freshness status in summary
             st.markdown("#### Analysis Status")
             content_timestamp = result.get('processing_timestamp', 0)
             ai_timestamp = ai_result.get('processing_timestamp', -1)
@@ -571,9 +710,9 @@ def _create_summary_tab(result: Dict[str, Any], ai_result: Optional[Dict[str, An
                 freshness_status = "Fresh ✅" if is_fresh else "Stale ⚠️"
                 st.metric("Result Freshness", freshness_status)
             with colI:
-                source_match = result.get('url') == ai_result.get('source_url')
-                source_status = "Match ✅" if source_match else "Mismatch ⚠️"
-                st.metric("Source URL", source_status)
+                source_match = result.get('url', 'Direct JSON Input') == ai_result.get('source_url', '')
+                source_status = "Match ✅" if source_match else "Different Source"
+                st.metric("Source", source_status)
             
             # Performance insights
             if stats.get('total_processing_time', 0) > 0 and stats.get('total_chunks', 0) > 0:
@@ -584,7 +723,9 @@ def _create_summary_tab(result: Dict[str, Any], ai_result: Optional[Dict[str, An
     except (json.JSONDecodeError, TypeError, KeyError) as e:
         st.warning(f"Could not parse JSON for statistics: {e}")
     
-    st.info(f"**Source URL**: {result['url']}")
+    # Show source information
+    source_info = result.get('url', 'Direct JSON Input')
+    st.info(f"**Source**: {source_info}")
 
 def create_ai_processing_interface(json_output: str, api_key: str, chunks: List[Dict[str, Any]]) -> Dict[str, Any]:
     """
@@ -641,33 +782,36 @@ def create_info_panel(title: str, content: str, icon: str = "ℹ️"):
     """Create an information panel."""
     st.info(f"{icon} **{title}**: {content}")
 
-# FIXED: New utility functions for stale results management
-def show_stale_results_warning(result: Dict[str, Any], ai_result: Dict[str, Any]) -> bool:
-    """
-    Show warning about stale results and return whether user wants to clear them.
-    
-    Returns:
-        bool: True if user clicked clear button
-    """
-    st.warning("⚠️ **Stale AI Results Detected**: These results may be from a previous URL analysis.")
-    
-    col1, col2 = st.columns([3, 1])
-    with col1:
-        st.write("The AI analysis shown may not correspond to the current content.")
-    with col2:
-        return st.button("🧹 Clear Stale Results", type="secondary")
-
-def create_analysis_context_display():
-    """Display current analysis context information."""
+# NEW FEATURE: Helper functions for dual input mode
+def show_input_mode_context():
+    """Show current input mode context information."""
+    input_mode = st.session_state.get('input_mode', '🌐 URL Input')
     current_url = st.session_state.get('current_url_analysis')
-    if current_url:
+    current_input_mode = st.session_state.get('current_input_analysis_mode')
+    
+    if input_mode == "🌐 URL Input" and current_url:
         with st.expander("📋 Current Analysis Context"):
+            st.write(f"**Input Mode**: URL Extraction")
             st.write(f"**URL**: {current_url}")
             st.write(f"**Timestamp**: {st.session_state.get('processing_timestamp', 'Unknown')}")
-            
-            ai_result = st.session_state.get('ai_analysis_result')
-            if ai_result:
-                ai_url = ai_result.get('source_url', 'Unknown')
-                ai_timestamp = ai_result.get('processing_timestamp', 'Unknown')
-                st.write(f"**AI Analysis URL**: {ai_url}")
-                st.write(f"**AI Analysis Timestamp**: {ai_timestamp}")
+    elif input_mode == "📄 Direct JSON" and current_input_mode == 'direct_json':
+        with st.expander("📋 Current Analysis Context"):
+            st.write(f"**Input Mode**: Direct JSON Input")
+            st.write(f"**Source**: User-provided chunked content")
+            st.write(f"**Timestamp**: {st.session_state.get('processing_timestamp', 'Unknown')}")
+
+def get_input_mode_display_name(mode: str) -> str:
+    """Convert internal input mode to display name."""
+    mode_map = {
+        'url': 'URL Extraction',
+        'direct_json': 'Direct JSON Input'
+    }
+    return mode_map.get(mode, mode)
+
+# Backward compatibility - keep old function name
+def create_url_input_section() -> tuple[str, bool]:
+    """
+    DEPRECATED: Use create_dual_input_section() instead.
+    Kept for backward compatibility.
+    """
+    return _create_url_input_mode()[1:]  # Return only url and process_clicked

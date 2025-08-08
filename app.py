@@ -201,60 +201,91 @@ def display_ai_results(report: str, stats: Dict[str, Any]):
 def generate_exports(report_content: str, url: str):
     """Generate export files in multiple formats"""
     
+    if not EXPORTS_AVAILABLE:
+        st.error("❌ Export functionality not available. Please check your exporters module.")
+        return
+    
     with st.spinner("📄 Generating export files..."):
         try:
             export_manager = ExportManager()
             
-            # Generate all formats
+            # Use your existing export manager's API
             results = export_manager.export_all_formats(
-                content=report_content,
+                markdown_content=report_content,  # Your API uses markdown_content
                 title=f"YMYL Audit Report - {url}",
-                formats=["html", "pdf", "word", "markdown"]
+                formats=["html", "pdf", "docx", "markdown"]  # Your API uses 'docx' not 'word'
             )
+            
+            # Handle your export manager's response format
+            if not results.get("success"):
+                st.error(f"❌ Export failed: {results.get('error', 'Unknown error')}")
+                return
+            
+            # Your API structure: results['formats'][format_name]
+            formats_data = results.get('formats', {})
             
             # Create download buttons
             col1, col2, col3, col4 = st.columns(4)
             
             with col1:
-                if results["html"]["success"]:
+                if 'html' in formats_data:
+                    filename = export_manager.create_filename("ymyl_audit_report", "html")
                     st.download_button(
                         "📄 HTML", 
-                        data=results["html"]["content"], 
-                        file_name=results["html"]["filename"],
+                        data=formats_data['html'], 
+                        file_name=filename,
                         mime="text/html"
                     )
             
             with col2:
-                if results["pdf"]["success"]:
+                if 'pdf' in formats_data:
+                    filename = export_manager.create_filename("ymyl_audit_report", "pdf")
                     st.download_button(
                         "📑 PDF", 
-                        data=results["pdf"]["content"], 
-                        file_name=results["pdf"]["filename"],
+                        data=formats_data['pdf'], 
+                        file_name=filename,
                         mime="application/pdf"
                     )
             
             with col3:
-                if results["word"]["success"]:
+                if 'docx' in formats_data:  # Your system uses 'docx' not 'word'
+                    filename = export_manager.create_filename("ymyl_audit_report", "docx")
                     st.download_button(
                         "📝 Word", 
-                        data=results["word"]["content"], 
-                        file_name=results["word"]["filename"],
+                        data=formats_data['docx'], 
+                        file_name=filename,
                         mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
                     )
             
             with col4:
-                if results["markdown"]["success"]:
+                if 'markdown' in formats_data:
+                    filename = export_manager.create_filename("ymyl_audit_report", "markdown")
                     st.download_button(
                         "📋 Markdown", 
-                        data=results["markdown"]["content"], 
-                        file_name=results["markdown"]["filename"],
+                        data=formats_data['markdown'], 
+                        file_name=filename,
                         mime="text/markdown"
                     )
             
-            st.success("✅ Export files generated successfully!")
+            # Show export statistics
+            metadata = results.get('metadata', {})
+            if metadata:
+                st.success(f"✅ Export files generated successfully!")
+                st.info(f"📊 {metadata.get('successful_formats', 0)} formats exported in {metadata.get('processing_time', 0):.2f}s")
+            
+            # Show any errors for individual formats
+            errors = results.get('errors', {})
+            if errors:
+                with st.expander("⚠️ Export Warnings"):
+                    for format_name, error in errors.items():
+                        st.warning(f"{format_name.upper()}: {error}")
             
         except Exception as e:
             st.error(f"❌ Export generation failed: {str(e)}")
+            # Show more detailed error info in debug mode
+            import traceback
+            with st.expander("🐛 Debug Info"):
+                st.code(traceback.format_exc())
 
 
 if __name__ == "__main__":

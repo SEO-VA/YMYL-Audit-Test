@@ -8,9 +8,9 @@ Coordinates multiple export formats and provides a unified interface.
 import time
 from datetime import datetime
 from typing import Dict, Optional, List, Any
-from .html_exporter import HTMLExporter
-from .word_exporter import WordExporter
-from .pdf_exporter import PDFExporter
+from exporters.html_exporter import HTMLExporter
+from exporters.word_exporter import WordExporter
+from exporters.pdf_exporter import PDFExporter
 from config.settings import DEFAULT_EXPORT_FORMATS
 from utils.logging_utils import setup_logger, format_processing_step
 

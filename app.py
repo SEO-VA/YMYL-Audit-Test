@@ -9,12 +9,25 @@ from typing import Dict, Any, List
 # Your existing imports
 from extractors.content_extractor import ContentExtractor
 from processors.chunk_processor import ChunkProcessor
-from exporters.export_manager import ExportManager
 from ui.components import (
     create_page_header, create_sidebar_config, 
     create_url_input_section, create_results_tabs
 )
 from utils.json_utils import extract_big_chunks, parse_json_output
+
+# Try to import export manager, handle if missing
+try:
+    from exporters.export_manager import ExportManager
+    EXPORTS_AVAILABLE = True
+except ImportError as e:
+    EXPORTS_AVAILABLE = False
+    print(f"Export functionality not available: {e}")
+
+# Try to import other dependencies
+try:
+    from config.settings import DEFAULT_EXPORT_FORMATS
+except ImportError:
+    DEFAULT_EXPORT_FORMATS = ["html", "pdf", "word", "markdown"]
 
 # New simplified AI client
 from ai.responses_client import process_chunks_async

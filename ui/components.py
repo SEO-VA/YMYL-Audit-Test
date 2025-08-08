@@ -530,53 +530,84 @@ def _create_ai_report_tab(ai_result: Dict[str, Any], content_result: Optional[Di
         st.markdown(ai_report)
 
 def _create_download_buttons(formats: Dict[str, bytes]):
-    """Create download buttons for different formats."""
-    timestamp = int(time.time())
+    """
+    Create download buttons for different formats.
     
-    col1, col2, col3, col4 = st.columns(4)
-    
-    format_configs = {
-        'markdown': {
-            'label': "📝 Markdown",
-            'mime': "text/markdown",
-            'help': "Original markdown format - perfect for copying to other platforms"
-        },
-        'html': {
-            'label': "🌐 HTML", 
-            'mime': "text/html",
-            'help': "Styled HTML document - opens in any web browser"
-        },
-        'docx': {
-            'label': "📄 Word",
-            'mime': "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-            'help': "Microsoft Word document - ready for editing and sharing"
-        },
-        'pdf': {
-            'label': "📋 PDF",
-            'mime': "application/pdf", 
-            'help': "Professional PDF document - perfect for presentations and archival"
+    FIXED: Robust implementation to prevent media file storage errors
+    """
+    try:
+        timestamp = int(time.time())
+        
+        col1, col2, col3, col4 = st.columns(4)
+        
+        format_configs = {
+            'markdown': {
+                'label': "📝 Markdown",
+                'mime': "text/markdown",
+                'help': "Original markdown format - perfect for copying to other platforms",
+                'extension': '.md'
+            },
+            'html': {
+                'label': "🌐 HTML", 
+                'mime': "text/html",
+                'help': "Styled HTML document - opens in any web browser",
+                'extension': '.html'
+            },
+            'docx': {
+                'label': "📄 Word",
+                'mime': "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                'help': "Microsoft Word document - ready for editing and sharing",
+                'extension': '.docx'
+            },
+            'pdf': {
+                'label': "📋 PDF",
+                'mime': "application/pdf", 
+                'help': "Professional PDF document - perfect for presentations and archival",
+                'extension': '.pdf'
+            }
         }
-    }
-    
-    columns = [col1, col2, col3, col4]
-    
-    for i, (fmt, config) in enumerate(format_configs.items()):
-        if fmt in formats and i < len(columns):
-            with columns[i]:
-                file_extension = {
-                    'markdown': '.md',
-                    'html': '.html', 
-                    'docx': '.docx',
-                    'pdf': '.pdf'
-                }.get(fmt, f'.{fmt}')
-                
+        
+        columns = [col1, col2, col3, col4]
+        
+        for i, (fmt, config) in enumerate(format_configs.items()):
+            if fmt in formats and i < len(columns):
+                with columns[i]:
+                    try:
+                        filename = f"ymyl_compliance_report_{timestamp}{config['extension']}"
+                        
+                        # FIXED: Use unique key for each download button to prevent conflicts
+                        button_key = f"download_{fmt}_{timestamp}_{hash(str(formats[fmt]))}"
+                        
+                        st.download_button(
+                            label=config['label'],
+                            data=formats[fmt],
+                            file_name=filename,
+                            mime=config['mime'],
+                            help=config['help'],
+                            key=button_key  # Unique key to prevent media file conflicts
+                        )
+                    except Exception as e:
+                        # If individual download button fails, show error but continue
+                        st.error(f"Error creating {fmt.upper()} download: {str(e)[:50]}...")
+                        logger.warning(f"Download button error for {fmt}: {e}")
+        
+    except Exception as e:
+        # If entire download section fails, provide fallback
+        st.error("Error creating download buttons. Please try refreshing the page.")
+        logger.error(f"Download buttons creation failed: {e}")
+        
+        # Provide simple fallback download for markdown
+        if 'markdown' in formats:
+            try:
                 st.download_button(
-                    label=config['label'],
-                    data=formats[fmt],
-                    file_name=f"ymyl_compliance_report_{timestamp}{file_extension}",
-                    mime=config['mime'],
-                    help=config['help']
+                    label="📝 Download Report (Markdown)",
+                    data=formats['markdown'],
+                    file_name=f"ymyl_report_backup_{int(time.time())}.md",
+                    mime="text/markdown",
+                    key=f"backup_download_{int(time.time())}"
                 )
+            except:
+                st.write("Please refresh the page to access downloads.")
 
 def _create_individual_analyses_tab(ai_result: Dict[str, Any]):
     """Create individual analyses tab content."""

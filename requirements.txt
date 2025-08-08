@@ -1,10 +1,33 @@
-streamlit
-requests
-beautifulsoup4
-selenium
-pytz
-aiohttp
-openai
-python-docx
-reportlab
-markdown
+# YMYL Audit Tool - Requirements
+# Core application dependencies
+
+# Web Framework
+streamlit>=1.28.0
+
+# Web Scraping & Content Extraction
+requests>=2.31.0
+beautifulsoup4>=4.12.0
+selenium>=4.15.0
+
+# AI & Async Processing
+openai>=1.0.0
+aiohttp>=3.8.0
+
+# Document Processing & Export
+python-docx>=0.8.11
+reportlab>=4.0.0
+markdown>=3.5.0
+
+# Utilities & Configuration
+pytz>=2023.3
+
+# Optional: Testing Dependencies (uncomment for development)
+# pytest>=7.4.0
+# pytest-asyncio>=0.21.0
+# pytest-mock>=3.11.0
+# pytest-cov>=4.1.0
+
+# Optional: Development Dependencies (uncomment for development)
+# black>=23.0.0
+# flake8>=6.0.0
+# mypy>=1.5.0

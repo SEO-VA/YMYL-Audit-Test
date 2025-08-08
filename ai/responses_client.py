@@ -8,8 +8,13 @@ from typing import List, Dict, Any, Tuple, Callable, Optional
 import json
 import time
 from dataclasses import dataclass
+import streamlit as st
 
-from config.settings import OPENAI_API_KEY, MAX_PARALLEL_REQUESTS
+# Try to import from config, fall back to defaults
+try:
+    from config.settings import MAX_PARALLEL_REQUESTS
+except ImportError:
+    MAX_PARALLEL_REQUESTS = 10  # Default value
 
 
 @dataclass
@@ -30,7 +35,14 @@ class ResponsesClient:
     """
     
     def __init__(self, api_key: str = None):
-        self.api_key = api_key or OPENAI_API_KEY
+        # Get API key from Streamlit secrets or parameter
+        if api_key:
+            self.api_key = api_key
+        elif hasattr(st, 'secrets') and 'openai_api_key' in st.secrets:
+            self.api_key = st.secrets['openai_api_key']
+        else:
+            raise ValueError("OpenAI API key not found. Please set it in Streamlit secrets as 'openai_api_key'")
+            
         self.base_url = "https://api.openai.com/v1"
         self.session = None
         

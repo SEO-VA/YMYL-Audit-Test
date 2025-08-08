@@ -3,7 +3,7 @@
 Configuration module for YMYL Audit Tool
 Centralized configuration management
 """
-
+try:
 from .settings import (
     ANALYZER_ASSISTANT_ID,
     DEFAULT_EXPORT_FORMATS,

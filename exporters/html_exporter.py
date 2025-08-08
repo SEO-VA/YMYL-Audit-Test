@@ -521,3 +521,5 @@ class HTMLExporter:
         except Exception as e:
             logger.error(f"Markdown validation error: {e}")
             return False
+
+logger.debug("HTMLExporter initialized")

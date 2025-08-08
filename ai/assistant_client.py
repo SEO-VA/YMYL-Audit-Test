@@ -1,448 +1,294 @@
 #!/usr/bin/env python3
 """
-Optimized Assistant Client for YMYL Audit Tool
-Fixed version that addresses performance and hanging request issues
+OpenAI Assistant Client for YMYL Audit Tool
+
+Handles direct interaction with OpenAI's Assistant API for content analysis.
+Manages thread creation, message handling, and response extraction.
 """
 
 import asyncio
-import aiohttp
-import json
 import time
-from typing import List, Dict, Any, Tuple, Optional, Callable
-from dataclasses import dataclass
-import streamlit as st
-from openai import AsyncOpenAI
+from typing import Dict, Any, Optional
+from openai import OpenAI
+from config.settings import ANALYZER_ASSISTANT_ID, MAX_PARALLEL_REQUESTS
+from utils.logging_utils import setup_logger
 
-# Import from config
-try:
-    from config.settings import ANALYZER_ASSISTANT_ID, MAX_PARALLEL_REQUESTS
-except ImportError:
-    ANALYZER_ASSISTANT_ID = "asst_WzODK9EapCaZoYkshT6x9xEH"
-    MAX_PARALLEL_REQUESTS = 10
+logger = setup_logger(__name__)
 
 
-@dataclass
-class ChunkAnalysis:
-    """Result of analyzing a single chunk"""
-    chunk_index: int
-    content: str
-    analysis: str
-    success: bool
-    error: Optional[str] = None
-    processing_time: float = 0.0
-    thread_id: Optional[str] = None
-    run_id: Optional[str] = None
-
-
-class OptimizedAssistantClient:
+class AssistantClient:
     """
-    Optimized OpenAI Assistant client with fixed performance issues:
-    - Proper async/await patterns
-    - Controlled concurrency
-    - Request cancellation support
-    - Efficient polling with exponential backoff
-    - Resource cleanup
+    Client for interacting with OpenAI Assistant API.
+    
+    Handles:
+    - Thread creation and management
+    - Message sending and response retrieval
+    - Error handling and retries
+    - Response parsing and validation
     """
     
-    def __init__(self, api_key: str = None):
-        # Get API key from Streamlit secrets or parameter
-        if api_key:
-            self.api_key = api_key
-        elif hasattr(st, 'secrets') and 'openai_api_key' in st.secrets:
-            self.api_key = st.secrets['openai_api_key']
-        else:
-            raise ValueError("OpenAI API key not found. Please set it in Streamlit secrets as 'openai_api_key'")
+    def __init__(self, api_key: str, assistant_id: str = ANALYZER_ASSISTANT_ID):
+        """
+        Initialize the AssistantClient.
         
-        self.assistant_id = ANALYZER_ASSISTANT_ID
-        self.client = None
-        self.active_tasks = set()
-        self.cancelled = False
-        
-        # Polling configuration
-        self.max_polling_time = 180  # 3 minutes max per request
-        self.initial_poll_delay = 0.5  # Start with 500ms
-        self.max_poll_delay = 5.0  # Cap at 5 seconds
-        self.backoff_multiplier = 1.5  # Gradual backoff
+        Args:
+            api_key (str): OpenAI API key
+            assistant_id (str): Assistant ID to use for analysis
+        """
+        self.client = OpenAI(api_key=api_key)
+        self.assistant_id = assistant_id
+        logger.info(f"AssistantClient initialized with assistant: {assistant_id}")
 
-    async def __aenter__(self):
-        """Async context manager entry"""
-        self.client = AsyncOpenAI(api_key=self.api_key)
-        self.cancelled = False
-        return self
-
-    async def __aexit__(self, exc_type, exc_val, exc_tb):
-        """Async context manager exit with proper cleanup"""
-        # Cancel all active tasks
-        self.cancelled = True
+    async def analyze_chunk(self, content: str, chunk_index: int, max_retries: int = 3) -> Dict[str, Any]:
+        """
+        Analyze a single content chunk using the OpenAI Assistant.
         
-        # Cancel and wait for all active tasks
-        if self.active_tasks:
-            for task in self.active_tasks:
-                if not task.done():
-                    task.cancel()
+        Args:
+            content (str): Content to analyze
+            chunk_index (int): Index of the chunk for tracking
+            max_retries (int): Maximum number of retry attempts
             
-            # Wait for cancellations to complete (with timeout)
+        Returns:
+            dict: Analysis result with success status and content/error
+        """
+        logger.info(f"Starting analysis of chunk {chunk_index} ({len(content):,} characters)")
+        
+        for attempt in range(max_retries + 1):
             try:
-                await asyncio.wait_for(
-                    asyncio.gather(*self.active_tasks, return_exceptions=True),
-                    timeout=10.0
-                )
-            except asyncio.TimeoutError:
-                pass  # Some tasks didn't cancel gracefully
+                result = await self._single_analysis_attempt(content, chunk_index)
+                
+                if result["success"]:
+                    logger.info(f"Analysis successful for chunk {chunk_index} on attempt {attempt + 1}")
+                    return result
+                else:
+                    logger.warning(f"Analysis failed for chunk {chunk_index} on attempt {attempt + 1}: {result.get('error')}")
+                    
+            except Exception as e:
+                logger.error(f"Exception during analysis of chunk {chunk_index}, attempt {attempt + 1}: {str(e)}")
+                
+                if attempt == max_retries:
+                    return {
+                        "success": False,
+                        "error": f"Failed after {max_retries + 1} attempts. Last error: {str(e)}",
+                        "chunk_index": chunk_index,
+                        "attempts": attempt + 1
+                    }
+                
+                # Wait before retry (exponential backoff)
+                wait_time = 2 ** attempt
+                logger.info(f"Waiting {wait_time} seconds before retry...")
+                await asyncio.sleep(wait_time)
         
-        # Close the client
-        if self.client:
-            await self.client.close()
+        return {
+            "success": False,
+            "error": f"Failed after {max_retries + 1} attempts",
+            "chunk_index": chunk_index,
+            "attempts": max_retries + 1
+        }
 
-    def cancel_processing(self):
-        """Cancel all ongoing processing"""
-        self.cancelled = True
-
-    async def analyze_chunk(self, chunk_content: str, chunk_index: int) -> ChunkAnalysis:
+    async def _single_analysis_attempt(self, content: str, chunk_index: int) -> Dict[str, Any]:
         """
-        Analyze a single chunk with proper error handling and cancellation support
+        Perform a single analysis attempt.
+        
+        Args:
+            content (str): Content to analyze
+            chunk_index (int): Index of the chunk
+            
+        Returns:
+            dict: Analysis result
         """
-        if self.cancelled:
-            return ChunkAnalysis(
-                chunk_index=chunk_index,
-                content=chunk_content,
-                analysis="",
-                success=False,
-                error="Processing cancelled"
-            )
-        
-        start_time = time.time()
-        thread_id = None
-        run_id = None
-        
         try:
-            # Step 1: Create thread
-            thread = await self.client.beta.threads.create()
+            # Create thread
+            thread = self.client.beta.threads.create()
             thread_id = thread.id
+            logger.debug(f"Created thread {thread_id} for chunk {chunk_index}")
             
-            if self.cancelled:
-                return self._create_cancelled_result(chunk_index, chunk_content)
-            
-            # Step 2: Add message to thread
-            await self.client.beta.threads.messages.create(
+            # Add message to thread
+            self.client.beta.threads.messages.create(
                 thread_id=thread_id,
                 role="user",
-                content=f"Analyze this content section for YMYL compliance:\n\n{chunk_content}"
+                content=content
             )
+            logger.debug(f"Added message to thread {thread_id}")
             
-            if self.cancelled:
-                return self._create_cancelled_result(chunk_index, chunk_content)
-            
-            # Step 3: Create and run with assistant
-            run = await self.client.beta.threads.runs.create(
+            # Create and run the assistant
+            run = self.client.beta.threads.runs.create(
                 thread_id=thread_id,
                 assistant_id=self.assistant_id
             )
             run_id = run.id
+            logger.debug(f"Started run {run_id} for thread {thread_id}")
             
-            if self.cancelled:
-                return self._create_cancelled_result(chunk_index, chunk_content)
+            # Poll for completion
+            start_time = time.time()
+            max_wait_time = 300  # 5 minutes maximum
             
-            # Step 4: Optimized polling with exponential backoff
-            analysis_text = await self._poll_for_completion(thread_id, run_id)
-            
-            if analysis_text is None:
-                return ChunkAnalysis(
-                    chunk_index=chunk_index,
-                    content=chunk_content,
-                    analysis="",
-                    success=False,
-                    error="Analysis timed out or was cancelled",
-                    processing_time=time.time() - start_time,
+            while run.status in ['queued', 'in_progress']:
+                if time.time() - start_time > max_wait_time:
+                    logger.error(f"Analysis timeout for chunk {chunk_index} after {max_wait_time} seconds")
+                    return {
+                        "success": False,
+                        "error": f"Analysis timeout after {max_wait_time} seconds",
+                        "chunk_index": chunk_index
+                    }
+                
+                await asyncio.sleep(1)
+                run = self.client.beta.threads.runs.retrieve(
                     thread_id=thread_id,
                     run_id=run_id
                 )
             
-            return ChunkAnalysis(
-                chunk_index=chunk_index,
-                content=chunk_content,
-                analysis=analysis_text,
-                success=True,
-                processing_time=time.time() - start_time,
-                thread_id=thread_id,
-                run_id=run_id
-            )
+            processing_time = time.time() - start_time
+            logger.debug(f"Run completed for chunk {chunk_index} in {processing_time:.2f} seconds with status: {run.status}")
             
-        except Exception as e:
-            return ChunkAnalysis(
-                chunk_index=chunk_index,
-                content=chunk_content,
-                analysis="",
-                success=False,
-                error=f"Request failed: {str(e)}",
-                processing_time=time.time() - start_time,
-                thread_id=thread_id,
-                run_id=run_id
-            )
-
-    async def _poll_for_completion(self, thread_id: str, run_id: str) -> Optional[str]:
-        """
-        Poll for run completion with optimized exponential backoff
-        """
-        poll_delay = self.initial_poll_delay
-        polling_start = time.time()
-        
-        while time.time() - polling_start < self.max_polling_time:
-            if self.cancelled:
-                # Try to cancel the run
-                try:
-                    await self.client.beta.threads.runs.cancel(
-                        thread_id=thread_id,
-                        run_id=run_id
-                    )
-                except Exception:
-                    pass  # Ignore cancellation errors
-                return None
+            # Handle different completion statuses
+            if run.status == 'completed':
+                return await self._extract_response(thread_id, chunk_index, processing_time)
             
-            try:
-                # Check run status
-                run = await self.client.beta.threads.runs.retrieve(
-                    thread_id=thread_id,
-                    run_id=run_id
-                )
-                
-                if run.status == "completed":
-                    # Get the assistant's response
-                    messages = await self.client.beta.threads.messages.list(
-                        thread_id=thread_id,
-                        order="desc",
-                        limit=1
-                    )
-                    
-                    if messages.data and messages.data[0].role == "assistant":
-                        content = messages.data[0].content
-                        if content and hasattr(content[0], 'text'):
-                            return content[0].text.value
-                    
-                    return "Analysis completed but no content found"
-                
-                elif run.status in ["failed", "cancelled", "expired"]:
-                    return None
-                
-                elif run.status in ["queued", "in_progress", "requires_action"]:
-                    # Handle requires_action status (shouldn't happen with file search only)
-                    if run.status == "requires_action":
-                        return None
-                    
-                    # Wait before next poll with exponential backoff
-                    await asyncio.sleep(poll_delay)
-                    poll_delay = min(poll_delay * self.backoff_multiplier, self.max_poll_delay)
-                else:
-                    # Unknown status
-                    await asyncio.sleep(poll_delay)
-                    
-            except Exception as e:
-                # On polling error, wait and retry
-                await asyncio.sleep(poll_delay)
-                poll_delay = min(poll_delay * self.backoff_multiplier, self.max_poll_delay)
-        
-        # Timed out
-        return None
-
-    async def process_chunks_parallel(
-        self, 
-        chunks: List[Dict[str, Any]], 
-        progress_callback: Optional[Callable] = None
-    ) -> Tuple[List[ChunkAnalysis], Dict[str, Any]]:
-        """
-        Process multiple chunks with controlled concurrency and proper cancellation
-        """
-        if not chunks:
-            return [], {"total_chunks": 0, "successful": 0, "failed": 0}
-        
-        # Create semaphore to limit concurrent requests
-        semaphore = asyncio.Semaphore(min(MAX_PARALLEL_REQUESTS, len(chunks)))
-        
-        async def process_single_chunk(chunk_data: Dict[str, Any], index: int) -> ChunkAnalysis:
-            """Process single chunk with semaphore control"""
-            async with semaphore:
-                if self.cancelled:
-                    return self._create_cancelled_result(index, chunk_data.get("content", ""))
-                
-                # Create task and register it
-                task = asyncio.current_task()
-                if task:
-                    self.active_tasks.add(task)
-                
-                try:
-                    result = await self.analyze_chunk(chunk_data.get("content", ""), index)
-                    if progress_callback and not self.cancelled:
-                        progress_callback(index + 1, len(chunks), result.success)
-                    return result
-                finally:
-                    # Unregister task
-                    if task and task in self.active_tasks:
-                        self.active_tasks.discard(task)
-        
-        # Create all tasks
-        tasks = [
-            process_single_chunk(chunk, i) 
-            for i, chunk in enumerate(chunks)
-        ]
-        
-        # Process with proper cancellation handling
-        try:
-            results = await asyncio.gather(*tasks, return_exceptions=True)
-        except Exception as e:
-            # Handle any unexpected errors
-            results = [ChunkAnalysis(
-                chunk_index=i,
-                content=chunks[i].get("content", ""),
-                analysis="",
-                success=False,
-                error=f"Processing interrupted: {str(e)}"
-            ) for i in range(len(chunks))]
-        
-        # Process results and handle exceptions
-        analysis_results = []
-        for i, result in enumerate(results):
-            if isinstance(result, Exception):
-                analysis_results.append(ChunkAnalysis(
-                    chunk_index=i,
-                    content=chunks[i].get("content", ""),
-                    analysis="",
-                    success=False,
-                    error=f"Processing exception: {str(result)}"
-                ))
-            elif isinstance(result, ChunkAnalysis):
-                analysis_results.append(result)
+            elif run.status == 'failed':
+                error_msg = f"Assistant run failed: {getattr(run, 'last_error', 'Unknown error')}"
+                logger.error(f"Run failed for chunk {chunk_index}: {error_msg}")
+                return {
+                    "success": False,
+                    "error": error_msg,
+                    "chunk_index": chunk_index
+                }
+            
+            elif run.status == 'requires_action':
+                # Handle function calls if needed in the future
+                error_msg = "Assistant requires action - not implemented"
+                logger.error(f"Unexpected status for chunk {chunk_index}: {error_msg}")
+                return {
+                    "success": False,
+                    "error": error_msg,
+                    "chunk_index": chunk_index
+                }
+            
             else:
-                # Unexpected result type
-                analysis_results.append(ChunkAnalysis(
-                    chunk_index=i,
-                    content=chunks[i].get("content", ""),
-                    analysis="",
-                    success=False,
-                    error="Unexpected result type"
-                ))
-        
-        # Calculate statistics
-        successful = sum(1 for r in analysis_results if r.success)
-        failed = len(analysis_results) - successful
-        total_time = sum(r.processing_time for r in analysis_results)
-        
-        stats = {
-            "total_chunks": len(chunks),
-            "successful": successful,
-            "failed": failed,
-            "total_processing_time": total_time,
-            "average_time_per_chunk": total_time / len(chunks) if chunks else 0,
-            "cancelled": self.cancelled
-        }
-        
-        return analysis_results, stats
+                error_msg = f"Unexpected run status: {run.status}"
+                logger.error(f"Unexpected status for chunk {chunk_index}: {error_msg}")
+                return {
+                    "success": False,
+                    "error": error_msg,
+                    "chunk_index": chunk_index
+                }
+                
+        except Exception as e:
+            logger.error(f"Exception in single analysis attempt for chunk {chunk_index}: {str(e)}")
+            return {
+                "success": False,
+                "error": str(e),
+                "chunk_index": chunk_index
+            }
 
-    def generate_report(self, analysis_results: List[ChunkAnalysis]) -> str:
-        """Generate comprehensive markdown report from analysis results"""
-        if not analysis_results:
-            return "# YMYL Audit Report\n\nNo content was analyzed."
+    async def _extract_response(self, thread_id: str, chunk_index: int, processing_time: float) -> Dict[str, Any]:
+        """
+        Extract the assistant's response from the thread.
         
-        successful_analyses = [r for r in analysis_results if r.success]
-        failed_analyses = [r for r in analysis_results if not r.success]
-        
-        report_lines = [
-            "# YMYL Audit Report",
-            "",
-            "## Executive Summary",
-            "",
-            f"- **Total Sections Analyzed**: {len(analysis_results)}",
-            f"- **Successfully Processed**: {len(successful_analyses)}",
-            f"- **Failed to Process**: {len(failed_analyses)}",
-        ]
-        
-        # Add cancellation notice if applicable
-        if self.cancelled:
-            report_lines.extend([
-                f"- **Status**: Processing was cancelled",
-                ""
-            ])
-        
-        report_lines.append("")
-        
-        if failed_analyses:
-            report_lines.extend([
-                "## Processing Errors",
-                ""
-            ])
-            for failed in failed_analyses:
-                report_lines.extend([
-                    f"### Section {failed.chunk_index + 1}",
-                    f"**Error**: {failed.error}",
-                    ""
-                ])
-        
-        if successful_analyses:
-            report_lines.extend([
-                "## Content Analysis Results",
-                ""
-            ])
-            for i, analysis in enumerate(successful_analyses):
-                report_lines.extend([
-                    f"## Section {analysis.chunk_index + 1}",
-                    "",
-                    analysis.analysis,
-                    "",
-                    "---",
-                    ""
-                ])
-        
-        return "\n".join(report_lines)
-
-    def _create_cancelled_result(self, chunk_index: int, content: str) -> ChunkAnalysis:
-        """Create result for cancelled processing"""
-        return ChunkAnalysis(
-            chunk_index=chunk_index,
-            content=content,
-            analysis="",
-            success=False,
-            error="Processing was cancelled"
-        )
-
-    def get_processing_status(self) -> Dict[str, Any]:
-        """Get current processing status"""
-        return {
-            "assistant_id": self.assistant_id,
-            "active_tasks": len(self.active_tasks),
-            "cancelled": self.cancelled,
-            "client_ready": self.client is not None
-        }
-
-
-# Async wrapper function for Streamlit integration
-async def process_chunks_async(chunks: List[Dict[str, Any]], progress_callback=None) -> Tuple[str, Dict[str, Any]]:
-    """
-    Process chunks and return markdown report + statistics
-    This replaces the problematic polling-based approach
-    """
-    async with OptimizedAssistantClient() as client:
-        results, stats = await client.process_chunks_parallel(chunks, progress_callback)
-        report = client.generate_report(results)
-        return report, stats
-
-
-# Cancellation support for Streamlit
-_current_client = None
-
-def cancel_current_processing():
-    """Cancel any ongoing processing"""
-    global _current_client
-    if _current_client:
-        _current_client.cancel_processing()
-
-async def process_chunks_with_cancellation(chunks: List[Dict[str, Any]], progress_callback=None) -> Tuple[str, Dict[str, Any]]:
-    """Process chunks with global cancellation support"""
-    global _current_client
-    
-    async with OptimizedAssistantClient() as client:
-        _current_client = client
+        Args:
+            thread_id (str): Thread ID to extract from
+            chunk_index (int): Chunk index for tracking
+            processing_time (float): Time taken for processing
+            
+        Returns:
+            dict: Extracted response data
+        """
         try:
-            results, stats = await client.process_chunks_parallel(chunks, progress_callback)
-            report = client.generate_report(results)
-            return report, stats
-        finally:
-            _current_client = None
+            # Get messages from thread
+            messages = self.client.beta.threads.messages.list(thread_id=thread_id)
+            
+            if not messages.data:
+                return {
+                    "success": False,
+                    "error": "No messages found in thread",
+                    "chunk_index": chunk_index
+                }
+            
+            # Get the assistant's response (first message is the most recent)
+            assistant_message = messages.data[0]
+            
+            if not assistant_message.content:
+                return {
+                    "success": False,
+                    "error": "Empty response from assistant",
+                    "chunk_index": chunk_index
+                }
+            
+            # Extract text content
+            response_content = assistant_message.content[0].text.value
+            
+            if not response_content or not response_content.strip():
+                return {
+                    "success": False,
+                    "error": "Assistant returned empty content",
+                    "chunk_index": chunk_index
+                }
+            
+            logger.info(f"Successfully extracted response for chunk {chunk_index} ({len(response_content):,} characters)")
+            
+            return {
+                "success": True,
+                "content": response_content,
+                "chunk_index": chunk_index,
+                "processing_time": processing_time,
+                "response_length": len(response_content),
+                "thread_id": thread_id
+            }
+            
+        except Exception as e:
+            logger.error(f"Error extracting response for chunk {chunk_index}: {str(e)}")
+            return {
+                "success": False,
+                "error": f"Error extracting response: {str(e)}",
+                "chunk_index": chunk_index
+            }
+
+    def validate_api_key(self) -> bool:
+        """
+        Validate that the API key works by making a simple request.
+        
+        Returns:
+            bool: True if API key is valid, False otherwise
+        """
+        try:
+            # Simple test request
+            models = self.client.models.list()
+            logger.info("API key validation successful")
+            return True
+        except Exception as e:
+            logger.error(f"API key validation failed: {str(e)}")
+            return False
+
+    def get_assistant_info(self) -> Optional[Dict[str, Any]]:
+        """
+        Get information about the configured assistant.
+        
+        Returns:
+            dict or None: Assistant information or None if error
+        """
+        try:
+            assistant = self.client.beta.assistants.retrieve(self.assistant_id)
+            return {
+                "id": assistant.id,
+                "name": assistant.name,
+                "model": assistant.model,
+                "description": assistant.description,
+                "instructions": assistant.instructions[:200] + "..." if len(assistant.instructions) > 200 else assistant.instructions
+            }
+        except Exception as e:
+            logger.error(f"Error retrieving assistant info: {str(e)}")
+            return None
+
+    async def cleanup(self):
+        """Clean up any resources."""
+        # Currently no persistent resources to clean up
+        # But this method exists for future extensibility
+        logger.info("AssistantClient cleanup completed")
+
+    def __del__(self):
+        """Destructor to ensure cleanup."""
+        try:
+            # Note: Can't call async cleanup in __del__, so we just log
+            logger.debug("AssistantClient destructor called")
+        except Exception:
+            pass  # Ignore errors in destructor

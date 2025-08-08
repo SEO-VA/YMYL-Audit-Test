@@ -1,261 +1,467 @@
+#!/usr/bin/env python3
 """
-Updated app.py for Responses API integration
-Removes all the complex Assistant/Thread management
+Export Manager for YMYL Audit Tool
+
+Coordinates multiple export formats and provides a unified interface.
 """
-import streamlit as st
-import asyncio
-from typing import Dict, Any, List
 
-# Your existing imports
-from extractors.content_extractor import ContentExtractor
-from processors.chunk_processor import ChunkProcessor
-from ui.components import (
-    create_page_header, create_sidebar_config, 
-    create_url_input_section, create_results_tabs
-)
-from utils.json_utils import extract_big_chunks, parse_json_output
+import time
+from datetime import datetime
+from typing import Dict, Optional, List, Any
+from exporters.html_exporter import HTMLExporter
+from exporters.word_exporter import WordExporter
+from exporters.pdf_exporter import PDFExporter
+from config.settings import DEFAULT_EXPORT_FORMATS
+from utils.logging_utils import setup_logger, format_processing_step
 
-# Try to import export manager, handle if missing
-try:
-    from exporters.export_manager import ExportManager
-    EXPORTS_AVAILABLE = True
-except ImportError as e:
-    EXPORTS_AVAILABLE = False
-    print(f"Export functionality not available: {e}")
-
-# Try to import other dependencies
-try:
-    from config.settings import DEFAULT_EXPORT_FORMATS
-except ImportError:
-    DEFAULT_EXPORT_FORMATS = ["html", "pdf", "word", "markdown"]
-
-# New simplified AI client
-from ai.responses_client import process_chunks_async
+logger = setup_logger(__name__)
 
 
-def main():
-    """Main Streamlit application"""
-    st.set_page_config(
-        page_title="YMYL Audit Tool", 
-        page_icon="🔍", 
-        layout="wide"
-    )
-    
-    # Check for API key first
-    if not hasattr(st, 'secrets') or 'openai_api_key' not in st.secrets:
-        st.error("❌ OpenAI API key not configured. Please add 'openai_api_key' to your Streamlit secrets.")
-        st.stop()
-    
-    # UI Components
-    create_page_header()
-    create_sidebar_config()
-    
-    # URL Processing Section
-    url = create_url_input_section()
-    
-    if url and st.button("🚀 Start Analysis", type="primary"):
-        process_url_workflow(url)
-
-
-def process_url_workflow(url: str):
-    """Complete workflow from URL to final report"""
-    
-    # Step 1: Extract Content
-    with st.spinner("🌐 Extracting content from webpage..."):
-        with ContentExtractor() as extractor:
-            success, content, error = extractor.extract_content(url)
-        
-        if not success:
-            st.error(f"❌ Failed to extract content: {error}")
-            return
-        
-        st.success(f"✅ Content extracted: {len(content)} characters")
-    
-    # Step 2: Process into Chunks
-    with st.spinner("🔄 Processing content into chunks..."):
-        with ChunkProcessor() as processor:
-            success, json_output, error = processor.process_content(content)
-        
-        if not success:
-            st.error(f"❌ Failed to process chunks: {error}")
-            return
-        
-        chunks = extract_big_chunks(json_output)
-        st.success(f"✅ Content chunked: {len(chunks)} sections identified")
-    
-    # Store in session state for AI processing
-    st.session_state.chunks = chunks
-    st.session_state.url = url
-    
-    # Step 3: AI Analysis (Optional)
-    st.markdown("### 🤖 AI Analysis")
-    
-    col1, col2 = st.columns([1, 2])
-    with col1:
-        if st.button("🧠 Analyze with AI", type="secondary"):
-            process_ai_analysis_async()
-    
-    with col2:
-        st.info(f"Ready to analyze {len(chunks)} content sections")
-    
-    # Always show chunked results
-    display_chunked_results(chunks)
-
-
-def process_ai_analysis_async():
+class ExportManager:
     """
-    Process AI analysis using the new Responses API
-    Much simpler than the previous approach
+    Manages export operations across multiple formats.
+    
+    Features:
+    - Unified export interface
+    - Format validation and selection
+    - Progress tracking
+    - Error handling and recovery
+    - Export statistics and metadata
     """
-    if "chunks" not in st.session_state:
-        st.error("❌ No chunks available for analysis")
-        return
     
-    chunks = st.session_state.chunks
-    
-    # Progress tracking
-    progress_bar = st.progress(0)
-    status_text = st.empty()
-    
-    def progress_callback(completed: int, total: int, success: bool):
-        """Update progress in real-time"""
-        progress = completed / total
-        progress_bar.progress(progress)
-        status_text.text(f"Processing: {completed}/{total} chunks ({'✅' if success else '❌'})")
-    
-    # Run async processing
-    try:
-        with st.spinner("🧠 Analyzing content with AI..."):
-            # Run the async function
-            report, stats = asyncio.run(
-                process_chunks_async(chunks, progress_callback)
-            )
-        
-        # Clear progress indicators
-        progress_bar.empty()
-        status_text.empty()
-        
-        # Store results
-        st.session_state.ai_report = report
-        st.session_state.ai_stats = stats
-        
-        # Show success message
-        st.success(f"✅ AI Analysis Complete!")
-        st.info(f"📊 Processed {stats['successful']}/{stats['total_chunks']} sections in {stats.get('total_processing_time', 0):.1f}s")
-        
-        # Display results
-        display_ai_results(report, stats)
-        
-    except Exception as e:
-        progress_bar.empty()
-        status_text.empty()
-        st.error(f"❌ AI Analysis failed: {str(e)}")
+    def __init__(self):
+        """Initialize the ExportManager."""
+        self.exporters = {
+            'html': HTMLExporter(),
+            'docx': WordExporter(),
+            'pdf': PDFExporter()
+        }
+        self.supported_formats = list(self.exporters.keys()) + ['markdown']
+        logger.info(f"ExportManager initialized with formats: {', '.join(self.supported_formats)}")
 
-
-def display_chunked_results(chunks: List[Dict[str, Any]]):
-    """Display the chunked content results"""
-    if not chunks:
-        return
-    
-    st.markdown("### 📄 Content Sections")
-    
-    for i, chunk in enumerate(chunks):
-        with st.expander(f"Section {i+1}: {chunk.get('title', 'Untitled')} ({len(chunk.get('content', ''))} chars)"):
-            st.markdown(f"**Content Preview:**")
-            preview = chunk.get('content', '')[:500]
-            if len(chunk.get('content', '')) > 500:
-                preview += "..."
-            st.text(preview)
-
-
-def display_ai_results(report: str, stats: Dict[str, Any]):
-    """Display AI analysis results with export options"""
-    
-    # Create tabs for different views
-    tabs = st.tabs(["📋 Full Report", "📊 Statistics", "📥 Downloads"])
-    
-    with tabs[0]:
-        st.markdown("### 🔍 YMYL Compliance Analysis")
-        st.markdown(report)
-    
-    with tabs[1]:
-        st.markdown("### 📈 Processing Statistics")
-        col1, col2, col3, col4 = st.columns(4)
+    def export_all_formats(self, 
+                          markdown_content: str, 
+                          title: str = "YMYL Compliance Audit Report",
+                          formats: Optional[List[str]] = None) -> Dict[str, Any]:
+        """
+        Export report in all requested formats.
         
-        with col1:
-            st.metric("Total Sections", stats.get('total_chunks', 0))
-        with col2:
-            st.metric("Successful", stats.get('successful', 0))
-        with col3:
-            st.metric("Failed", stats.get('failed', 0))
-        with col4:
-            st.metric("Avg Time/Section", f"{stats.get('average_time_per_chunk', 0):.2f}s")
-    
-    with tabs[2]:
-        st.markdown("### 💾 Export Analysis Report")
+        Args:
+            markdown_content (str): Markdown content to export
+            title (str): Document title
+            formats (list): List of formats to export (defaults to all)
+            
+        Returns:
+            dict: Export results with data and metadata
+        """
+        logger.info(f"Starting multi-format export ({len(markdown_content):,} characters)")
         
-        if st.button("📥 Generate Export Files", type="secondary"):
-            generate_exports(report, st.session_state.get('url', 'Unknown URL'))
+        if formats is None:
+            formats = DEFAULT_EXPORT_FORMATS
+        
+        # Validate formats
+        valid_formats = self._validate_formats(formats)
+        if not valid_formats:
+            return self._create_error_result("No valid formats specified")
+        
+        # Validate content
+        if not self._validate_content(markdown_content):
+            return self._create_error_result("Invalid markdown content")
+        
+        start_time = time.time()
+        results = {
+            'success': True,
+            'formats': {},
+            'errors': {},
+            'metadata': {
+                'title': title,
+                'formats_requested': formats,
+                'formats_processed': [],
+                'export_timestamp': datetime.now().isoformat(),
+                'content_length': len(markdown_content),
+                'processing_time': 0
+            }
+        }
+        
+        # Process each format
+        for fmt in valid_formats:
+            try:
+                logger.info(f"Exporting to {fmt.upper()} format...")
+                
+                if fmt == 'markdown':
+                    # Special case for markdown - just encode as UTF-8
+                    results['formats'][fmt] = markdown_content.encode('utf-8')
+                    results['metadata']['formats_processed'].append(fmt)
+                else:
+                    # Use appropriate exporter
+                    exporter = self.exporters[fmt]
+                    exported_data = exporter.convert(markdown_content, title)
+                    results['formats'][fmt] = exported_data
+                    results['metadata']['formats_processed'].append(fmt)
+                
+                logger.info(f"Successfully exported {fmt.upper()} format")
+                
+            except Exception as e:
+                error_msg = f"Export failed for {fmt}: {str(e)}"
+                logger.error(error_msg)
+                results['errors'][fmt] = error_msg
+        
+        # Calculate final metadata
+        processing_time = time.time() - start_time
+        results['metadata']['processing_time'] = processing_time
+        results['metadata']['successful_formats'] = len(results['formats'])
+        results['metadata']['failed_formats'] = len(results['errors'])
+        
+        # Determine overall success
+        if not results['formats']:
+            results['success'] = False
+            results['error'] = "All export formats failed"
+        elif results['errors']:
+            results['success'] = 'partial'  # Some succeeded, some failed
+        
+        logger.info(f"Multi-format export completed in {processing_time:.2f}s: "
+                   f"{len(results['formats'])} successful, {len(results['errors'])} failed")
+        
+        return results
 
-
-def generate_exports(report_content: str, url: str):
-    """Generate export files in multiple formats"""
-    
-    with st.spinner("📄 Generating export files..."):
+    def export_single_format(self, 
+                            markdown_content: str, 
+                            format_name: str,
+                            title: str = "YMYL Compliance Audit Report") -> Dict[str, Any]:
+        """
+        Export report in a single format.
+        
+        Args:
+            markdown_content (str): Markdown content to export
+            format_name (str): Format to export ('html', 'docx', 'pdf', 'markdown')
+            title (str): Document title
+            
+        Returns:
+            dict: Export result with data and metadata
+        """
+        logger.info(f"Starting single format export: {format_name.upper()}")
+        
+        # Validate format
+        if format_name not in self.supported_formats:
+            return self._create_error_result(f"Unsupported format: {format_name}")
+        
+        # Validate content
+        if not self._validate_content(markdown_content):
+            return self._create_error_result("Invalid markdown content")
+        
+        start_time = time.time()
+        
         try:
-            export_manager = ExportManager()
+            if format_name == 'markdown':
+                exported_data = markdown_content.encode('utf-8')
+            else:
+                exporter = self.exporters[format_name]
+                exported_data = exporter.convert(markdown_content, title)
             
-            # Generate all formats
-            results = export_manager.export_all_formats(
-                content=report_content,
-                title=f"YMYL Audit Report - {url}",
-                formats=["html", "pdf", "word", "markdown"]
-            )
+            processing_time = time.time() - start_time
             
-            # Create download buttons
-            col1, col2, col3, col4 = st.columns(4)
+            result = {
+                'success': True,
+                'format': format_name,
+                'data': exported_data,
+                'metadata': {
+                    'title': title,
+                    'format': format_name,
+                    'export_timestamp': datetime.now().isoformat(),
+                    'content_length': len(markdown_content),
+                    'exported_size': len(exported_data),
+                    'processing_time': processing_time
+                }
+            }
             
-            with col1:
-                if results["html"]["success"]:
-                    st.download_button(
-                        "📄 HTML", 
-                        data=results["html"]["content"], 
-                        file_name=results["html"]["filename"],
-                        mime="text/html"
-                    )
-            
-            with col2:
-                if results["pdf"]["success"]:
-                    st.download_button(
-                        "📑 PDF", 
-                        data=results["pdf"]["content"], 
-                        file_name=results["pdf"]["filename"],
-                        mime="application/pdf"
-                    )
-            
-            with col3:
-                if results["word"]["success"]:
-                    st.download_button(
-                        "📝 Word", 
-                        data=results["word"]["content"], 
-                        file_name=results["word"]["filename"],
-                        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-                    )
-            
-            with col4:
-                if results["markdown"]["success"]:
-                    st.download_button(
-                        "📋 Markdown", 
-                        data=results["markdown"]["content"], 
-                        file_name=results["markdown"]["filename"],
-                        mime="text/markdown"
-                    )
-            
-            st.success("✅ Export files generated successfully!")
+            logger.info(f"Successfully exported {format_name.upper()} format in {processing_time:.2f}s")
+            return result
             
         except Exception as e:
-            st.error(f"❌ Export generation failed: {str(e)}")
+            error_msg = f"Export failed for {format_name}: {str(e)}"
+            logger.error(error_msg)
+            return self._create_error_result(error_msg)
 
+    def get_export_info(self, markdown_content: str) -> Dict[str, Any]:
+        """
+        Get information about exports without actually performing them.
+        
+        Args:
+            markdown_content (str): Markdown content to analyze
+            
+        Returns:
+            dict: Export information and estimates
+        """
+        info = {
+            'content_analysis': {
+                'character_count': len(markdown_content),
+                'word_count_estimate': len(markdown_content.split()),
+                'line_count': len(markdown_content.split('\n')),
+                'is_valid': self._validate_content(markdown_content)
+            },
+            'supported_formats': self.supported_formats,
+            'format_estimates': {}
+        }
+        
+        # Get format-specific information
+        for fmt_name, exporter in self.exporters.items():
+            try:
+                if hasattr(exporter, 'get_document_info'):
+                    info['format_estimates'][fmt_name] = exporter.get_document_info(markdown_content)
+                else:
+                    info['format_estimates'][fmt_name] = {'available': False}
+            except Exception as e:
+                info['format_estimates'][fmt_name] = {'error': str(e)}
+        
+        # Markdown format info (simple)
+        info['format_estimates']['markdown'] = {
+            'file_size_estimate': f"{len(markdown_content.encode('utf-8')) // 1024}KB",
+            'character_count': len(markdown_content),
+            'encoding': 'UTF-8'
+        }
+        
+        return info
 
-if __name__ == "__main__":
-    main()
+    def validate_export_request(self, formats: List[str], content: str) -> Dict[str, Any]:
+        """
+        Validate an export request before processing.
+        
+        Args:
+            formats (list): Requested export formats
+            content (str): Content to export
+            
+        Returns:
+            dict: Validation results
+        """
+        validation = {
+            'valid': True,
+            'errors': [],
+            'warnings': [],
+            'valid_formats': [],
+            'invalid_formats': [],
+            'content_valid': False
+        }
+        
+        # Validate content
+        validation['content_valid'] = self._validate_content(content)
+        if not validation['content_valid']:
+            validation['errors'].append("Content is empty or invalid")
+            validation['valid'] = False
+        
+        # Validate formats
+        for fmt in formats:
+            if fmt in self.supported_formats:
+                validation['valid_formats'].append(fmt)
+            else:
+                validation['invalid_formats'].append(fmt)
+                validation['errors'].append(f"Unsupported format: {fmt}")
+        
+        if not validation['valid_formats']:
+            validation['errors'].append("No valid formats specified")
+            validation['valid'] = False
+        
+        # Content size warnings
+        content_size = len(content)
+        if content_size > 1000000:  # 1MB
+            validation['warnings'].append(f"Large content size: {content_size:,} characters")
+        
+        if content_size > 2000000:  # 2MB
+            validation['errors'].append("Content too large for reliable export")
+            validation['valid'] = False
+        
+        return validation
+
+    def get_format_capabilities(self) -> Dict[str, Dict[str, Any]]:
+        """
+        Get information about each export format's capabilities.
+        
+        Returns:
+            dict: Format capabilities information
+        """
+        capabilities = {
+            'html': {
+                'name': 'HTML',
+                'description': 'Styled web document',
+                'features': ['responsive design', 'CSS styling', 'web browser compatible'],
+                'best_for': ['web viewing', 'sharing online', 'responsive display'],
+                'file_extension': '.html',
+                'mime_type': 'text/html'
+            },
+            'docx': {
+                'name': 'Microsoft Word',
+                'description': 'Editable business document',
+                'features': ['professional formatting', 'editable', 'widely supported'],
+                'best_for': ['business reports', 'editing', 'collaboration'],
+                'file_extension': '.docx',
+                'mime_type': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+            },
+            'pdf': {
+                'name': 'PDF',
+                'description': 'Portable document format',
+                'features': ['fixed formatting', 'print-ready', 'universal compatibility'],
+                'best_for': ['presentations', 'archival', 'professional distribution'],
+                'file_extension': '.pdf',
+                'mime_type': 'application/pdf'
+            },
+            'markdown': {
+                'name': 'Markdown',
+                'description': 'Plain text with formatting syntax',
+                'features': ['lightweight', 'version control friendly', 'platform independent'],
+                'best_for': ['developers', 'documentation', 'version control'],
+                'file_extension': '.md',
+                'mime_type': 'text/markdown'
+            }
+        }
+        
+        return capabilities
+
+    def _validate_formats(self, formats: List[str]) -> List[str]:
+        """
+        Validate and filter requested formats.
+        
+        Args:
+            formats (list): Requested formats
+            
+        Returns:
+            list: Valid formats only
+        """
+        valid_formats = []
+        for fmt in formats:
+            if fmt in self.supported_formats:
+                valid_formats.append(fmt)
+            else:
+                logger.warning(f"Skipping unsupported format: {fmt}")
+        
+        return valid_formats
+
+    def _validate_content(self, content: str) -> bool:
+        """
+        Validate markdown content.
+        
+        Args:
+            content (str): Content to validate
+            
+        Returns:
+            bool: True if valid, False otherwise
+        """
+        try:
+            if not content or not content.strip():
+                logger.error("Content is empty")
+                return False
+            
+            # Check for reasonable size limits
+            if len(content) > 5000000:  # 5MB limit
+                logger.error(f"Content too large: {len(content):,} characters")
+                return False
+            
+            return True
+            
+        except Exception as e:
+            logger.error(f"Content validation error: {e}")
+            return False
+
+    def _create_error_result(self, error_message: str) -> Dict[str, Any]:
+        """
+        Create standardized error result.
+        
+        Args:
+            error_message (str): Error description
+            
+        Returns:
+            dict: Error result structure
+        """
+        return {
+            'success': False,
+            'error': error_message,
+            'formats': {},
+            'metadata': {
+                'export_timestamp': datetime.now().isoformat(),
+                'error': error_message
+            }
+        }
+
+    def get_recommended_formats(self, use_case: str = "general") -> List[str]:
+        """
+        Get recommended export formats for different use cases.
+        
+        Args:
+            use_case (str): Use case ('general', 'business', 'web', 'archive')
+            
+        Returns:
+            list: Recommended formats
+        """
+        recommendations = {
+            'general': ['html', 'pdf', 'markdown'],
+            'business': ['docx', 'pdf'],
+            'web': ['html', 'markdown'],
+            'archive': ['pdf', 'html'],
+            'development': ['markdown', 'html'],
+            'presentation': ['pdf', 'html']
+        }
+        
+        return recommendations.get(use_case, ['html', 'pdf', 'markdown'])
+
+    def create_filename(self, base_name: str, format_name: str, include_timestamp: bool = True) -> str:
+        """
+        Create appropriate filename for export format.
+        
+        Args:
+            base_name (str): Base filename (without extension)
+            format_name (str): Export format
+            include_timestamp (bool): Whether to include timestamp
+            
+        Returns:
+            str: Complete filename with extension
+        """
+        # Clean base name
+        clean_name = "".join(c for c in base_name if c.isalnum() or c in (' ', '-', '_')).strip()
+        clean_name = clean_name.replace(' ', '_').lower()
+        
+        # Add timestamp if requested
+        if include_timestamp:
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            clean_name = f"{clean_name}_{timestamp}"
+        
+        # Get file extension
+        capabilities = self.get_format_capabilities()
+        extension = capabilities.get(format_name, {}).get('file_extension', f'.{format_name}')
+        
+        return f"{clean_name}{extension}"
+
+    def get_export_statistics(self) -> Dict[str, Any]:
+        """
+        Get statistics about export capabilities and performance.
+        
+        Returns:
+            dict: Export statistics
+        """
+        stats = {
+            'supported_formats': len(self.supported_formats),
+            'available_exporters': len(self.exporters),
+            'formats': self.supported_formats,
+            'capabilities': self.get_format_capabilities(),
+            'recommendations': {
+                use_case: self.get_recommended_formats(use_case)
+                for use_case in ['general', 'business', 'web', 'archive', 'development', 'presentation']
+            }
+        }
+        
+        return stats
+
+    def cleanup(self):
+        """Clean up any resources used by exporters."""
+        try:
+            for exporter in self.exporters.values():
+                if hasattr(exporter, 'cleanup'):
+                    exporter.cleanup()
+            logger.info("ExportManager cleanup completed")
+        except Exception as e:
+            logger.warning(f"Error during cleanup: {e}")
+
+    def __enter__(self):
+        """Context manager entry."""
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        """Context manager exit with cleanup."""
+        self.cleanup()

@@ -28,6 +28,11 @@ def main():
         layout="wide"
     )
     
+    # Check for API key first
+    if not hasattr(st, 'secrets') or 'openai_api_key' not in st.secrets:
+        st.error("❌ OpenAI API key not configured. Please add 'openai_api_key' to your Streamlit secrets.")
+        st.stop()
+    
     # UI Components
     create_page_header()
     create_sidebar_config()

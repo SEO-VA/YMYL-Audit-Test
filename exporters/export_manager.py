@@ -8,13 +8,44 @@ Coordinates multiple export formats and provides a unified interface.
 import time
 from datetime import datetime
 from typing import Dict, Optional, List, Any
-from exporters.html_exporter import HTMLExporter
-from exporters.word_exporter import WordExporter
-from exporters.pdf_exporter import PDFExporter
-from config.settings import DEFAULT_EXPORT_FORMATS
-from utils.logging_utils import setup_logger, format_processing_step
 
-logger = setup_logger(__name__)
+# Fixed import paths - using absolute imports instead of relative
+try:
+    from exporters.html_exporter import HTMLExporter
+    HTML_AVAILABLE = True
+except ImportError:
+    HTML_AVAILABLE = False
+    HTMLExporter = None
+
+try:
+    from exporters.word_exporter import WordExporter
+    WORD_AVAILABLE = True
+except ImportError:
+    WORD_AVAILABLE = False
+    WordExporter = None
+
+try:
+    from exporters.pdf_exporter import PDFExporter
+    PDF_AVAILABLE = True
+except ImportError:
+    PDF_AVAILABLE = False
+    PDFExporter = None
+
+# Import settings with fallback
+try:
+    from config.settings import DEFAULT_EXPORT_FORMATS
+except ImportError:
+    DEFAULT_EXPORT_FORMATS = ["html", "pdf", "docx", "markdown"]
+
+# Import logging utils with fallback
+try:
+    from utils.logging_utils import setup_logger, format_processing_step
+    logger = setup_logger(__name__)
+except ImportError:
+    import logging
+    logger = logging.getLogger(__name__)
+    def format_processing_step(step, status="info", details=None):
+        return f"[{status.upper()}] {step}" + (f": {details}" if details else "")
 
 
 class ExportManager:
@@ -31,11 +62,16 @@ class ExportManager:
     
     def __init__(self):
         """Initialize the ExportManager."""
-        self.exporters = {
-            'html': HTMLExporter(),
-            'docx': WordExporter(),
-            'pdf': PDFExporter()
-        }
+        self.exporters = {}
+        
+        # Initialize available exporters
+        if HTML_AVAILABLE and HTMLExporter:
+            self.exporters['html'] = HTMLExporter()
+        if WORD_AVAILABLE and WordExporter:
+            self.exporters['docx'] = WordExporter()
+        if PDF_AVAILABLE and PDFExporter:
+            self.exporters['pdf'] = PDFExporter()
+        
         self.supported_formats = list(self.exporters.keys()) + ['markdown']
         logger.info(f"ExportManager initialized with formats: {', '.join(self.supported_formats)}")
 
@@ -93,6 +129,11 @@ class ExportManager:
                     results['formats'][fmt] = markdown_content.encode('utf-8')
                     results['metadata']['formats_processed'].append(fmt)
                 else:
+                    # Check if exporter is available
+                    if fmt not in self.exporters:
+                        results['errors'][fmt] = f"Exporter for {fmt} not available"
+                        continue
+                    
                     # Use appropriate exporter
                     exporter = self.exporters[fmt]
                     exported_data = exporter.convert(markdown_content, title)
@@ -155,6 +196,9 @@ class ExportManager:
             if format_name == 'markdown':
                 exported_data = markdown_content.encode('utf-8')
             else:
+                if format_name not in self.exporters:
+                    return self._create_error_result(f"Exporter for {format_name} not available")
+                
                 exporter = self.exporters[format_name]
                 exported_data = exporter.convert(markdown_content, title)
             
@@ -200,6 +244,7 @@ class ExportManager:
                 'is_valid': self._validate_content(markdown_content)
             },
             'supported_formats': self.supported_formats,
+            'available_exporters': list(self.exporters.keys()),
             'format_estimates': {}
         }
         
@@ -209,7 +254,7 @@ class ExportManager:
                 if hasattr(exporter, 'get_document_info'):
                     info['format_estimates'][fmt_name] = exporter.get_document_info(markdown_content)
                 else:
-                    info['format_estimates'][fmt_name] = {'available': False}
+                    info['format_estimates'][fmt_name] = {'available': True}
             except Exception as e:
                 info['format_estimates'][fmt_name] = {'error': str(e)}
         
@@ -239,6 +284,7 @@ class ExportManager:
             'warnings': [],
             'valid_formats': [],
             'invalid_formats': [],
+            'unavailable_formats': [],
             'content_valid': False
         }
         
@@ -251,13 +297,17 @@ class ExportManager:
         # Validate formats
         for fmt in formats:
             if fmt in self.supported_formats:
-                validation['valid_formats'].append(fmt)
+                if fmt == 'markdown' or fmt in self.exporters:
+                    validation['valid_formats'].append(fmt)
+                else:
+                    validation['unavailable_formats'].append(fmt)
+                    validation['warnings'].append(f"Exporter for {fmt} not available")
             else:
                 validation['invalid_formats'].append(fmt)
                 validation['errors'].append(f"Unsupported format: {fmt}")
         
         if not validation['valid_formats']:
-            validation['errors'].append("No valid formats specified")
+            validation['errors'].append("No valid/available formats specified")
             validation['valid'] = False
         
         # Content size warnings
@@ -285,7 +335,8 @@ class ExportManager:
                 'features': ['responsive design', 'CSS styling', 'web browser compatible'],
                 'best_for': ['web viewing', 'sharing online', 'responsive display'],
                 'file_extension': '.html',
-                'mime_type': 'text/html'
+                'mime_type': 'text/html',
+                'available': HTML_AVAILABLE
             },
             'docx': {
                 'name': 'Microsoft Word',
@@ -293,7 +344,8 @@ class ExportManager:
                 'features': ['professional formatting', 'editable', 'widely supported'],
                 'best_for': ['business reports', 'editing', 'collaboration'],
                 'file_extension': '.docx',
-                'mime_type': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+                'mime_type': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+                'available': WORD_AVAILABLE
             },
             'pdf': {
                 'name': 'PDF',
@@ -301,7 +353,8 @@ class ExportManager:
                 'features': ['fixed formatting', 'print-ready', 'universal compatibility'],
                 'best_for': ['presentations', 'archival', 'professional distribution'],
                 'file_extension': '.pdf',
-                'mime_type': 'application/pdf'
+                'mime_type': 'application/pdf',
+                'available': PDF_AVAILABLE
             },
             'markdown': {
                 'name': 'Markdown',
@@ -309,7 +362,8 @@ class ExportManager:
                 'features': ['lightweight', 'version control friendly', 'platform independent'],
                 'best_for': ['developers', 'documentation', 'version control'],
                 'file_extension': '.md',
-                'mime_type': 'text/markdown'
+                'mime_type': 'text/markdown',
+                'available': True  # Always available
             }
         }
         
@@ -328,7 +382,11 @@ class ExportManager:
         valid_formats = []
         for fmt in formats:
             if fmt in self.supported_formats:
-                valid_formats.append(fmt)
+                # Check if the exporter is actually available
+                if fmt == 'markdown' or fmt in self.exporters:
+                    valid_formats.append(fmt)
+                else:
+                    logger.warning(f"Skipping unavailable format: {fmt}")
             else:
                 logger.warning(f"Skipping unsupported format: {fmt}")
         
@@ -388,7 +446,7 @@ class ExportManager:
             use_case (str): Use case ('general', 'business', 'web', 'archive')
             
         Returns:
-            list: Recommended formats
+            list: Recommended formats (only available ones)
         """
         recommendations = {
             'general': ['html', 'pdf', 'markdown'],
@@ -399,7 +457,9 @@ class ExportManager:
             'presentation': ['pdf', 'html']
         }
         
-        return recommendations.get(use_case, ['html', 'pdf', 'markdown'])
+        # Filter recommendations to only include available formats
+        base_recommendations = recommendations.get(use_case, ['html', 'pdf', 'markdown'])
+        return [fmt for fmt in base_recommendations if fmt in self.supported_formats]
 
     def create_filename(self, base_name: str, format_name: str, include_timestamp: bool = True) -> str:
         """
@@ -435,11 +495,15 @@ class ExportManager:
         Returns:
             dict: Export statistics
         """
+        capabilities = self.get_format_capabilities()
+        
         stats = {
             'supported_formats': len(self.supported_formats),
             'available_exporters': len(self.exporters),
             'formats': self.supported_formats,
-            'capabilities': self.get_format_capabilities(),
+            'available_formats': [fmt for fmt, cap in capabilities.items() if cap.get('available', False)],
+            'unavailable_formats': [fmt for fmt, cap in capabilities.items() if not cap.get('available', True)],
+            'capabilities': capabilities,
             'recommendations': {
                 use_case: self.get_recommended_formats(use_case)
                 for use_case in ['general', 'business', 'web', 'archive', 'development', 'presentation']

@@ -41,3 +41,6 @@ DEBUG_MODE_DEFAULT = True
 # Logging Configuration
 LOG_FORMAT = '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 LOG_LEVEL = 'INFO'
+
+# Add this to your config/settings.py
+DEFAULT_EXPORT_FORMATS = ["html", "pdf", "docx", "markdown"]

@@ -288,4 +288,180 @@ class ExportManager:
                 'mime_type': 'text/html'
             },
             'docx': {
-                'name
+                'name': 'Microsoft Word',
+                'description': 'Editable business document',
+                'features': ['professional formatting', 'editable', 'widely supported'],
+                'best_for': ['business reports', 'editing', 'collaboration'],
+                'file_extension': '.docx',
+                'mime_type': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+            },
+            'pdf': {
+                'name': 'PDF',
+                'description': 'Portable document format',
+                'features': ['fixed formatting', 'print-ready', 'universal compatibility'],
+                'best_for': ['presentations', 'archival', 'professional distribution'],
+                'file_extension': '.pdf',
+                'mime_type': 'application/pdf'
+            },
+            'markdown': {
+                'name': 'Markdown',
+                'description': 'Plain text with formatting syntax',
+                'features': ['lightweight', 'version control friendly', 'platform independent'],
+                'best_for': ['developers', 'documentation', 'version control'],
+                'file_extension': '.md',
+                'mime_type': 'text/markdown'
+            }
+        }
+        
+        return capabilities
+
+    def _validate_formats(self, formats: List[str]) -> List[str]:
+        """
+        Validate and filter requested formats.
+        
+        Args:
+            formats (list): Requested formats
+            
+        Returns:
+            list: Valid formats only
+        """
+        valid_formats = []
+        for fmt in formats:
+            if fmt in self.supported_formats:
+                valid_formats.append(fmt)
+            else:
+                logger.warning(f"Skipping unsupported format: {fmt}")
+        
+        return valid_formats
+
+    def _validate_content(self, content: str) -> bool:
+        """
+        Validate markdown content.
+        
+        Args:
+            content (str): Content to validate
+            
+        Returns:
+            bool: True if valid, False otherwise
+        """
+        try:
+            if not content or not content.strip():
+                logger.error("Content is empty")
+                return False
+            
+            # Check for reasonable size limits
+            if len(content) > 5000000:  # 5MB limit
+                logger.error(f"Content too large: {len(content):,} characters")
+                return False
+            
+            return True
+            
+        except Exception as e:
+            logger.error(f"Content validation error: {e}")
+            return False
+
+    def _create_error_result(self, error_message: str) -> Dict[str, Any]:
+        """
+        Create standardized error result.
+        
+        Args:
+            error_message (str): Error description
+            
+        Returns:
+            dict: Error result structure
+        """
+        return {
+            'success': False,
+            'error': error_message,
+            'formats': {},
+            'metadata': {
+                'export_timestamp': datetime.now().isoformat(),
+                'error': error_message
+            }
+        }
+
+    def get_recommended_formats(self, use_case: str = "general") -> List[str]:
+        """
+        Get recommended export formats for different use cases.
+        
+        Args:
+            use_case (str): Use case ('general', 'business', 'web', 'archive')
+            
+        Returns:
+            list: Recommended formats
+        """
+        recommendations = {
+            'general': ['html', 'pdf', 'markdown'],
+            'business': ['docx', 'pdf'],
+            'web': ['html', 'markdown'],
+            'archive': ['pdf', 'html'],
+            'development': ['markdown', 'html'],
+            'presentation': ['pdf', 'html']
+        }
+        
+        return recommendations.get(use_case, ['html', 'pdf', 'markdown'])
+
+    def create_filename(self, base_name: str, format_name: str, include_timestamp: bool = True) -> str:
+        """
+        Create appropriate filename for export format.
+        
+        Args:
+            base_name (str): Base filename (without extension)
+            format_name (str): Export format
+            include_timestamp (bool): Whether to include timestamp
+            
+        Returns:
+            str: Complete filename with extension
+        """
+        # Clean base name
+        clean_name = "".join(c for c in base_name if c.isalnum() or c in (' ', '-', '_')).strip()
+        clean_name = clean_name.replace(' ', '_').lower()
+        
+        # Add timestamp if requested
+        if include_timestamp:
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            clean_name = f"{clean_name}_{timestamp}"
+        
+        # Get file extension
+        capabilities = self.get_format_capabilities()
+        extension = capabilities.get(format_name, {}).get('file_extension', f'.{format_name}')
+        
+        return f"{clean_name}{extension}"
+
+    def get_export_statistics(self) -> Dict[str, Any]:
+        """
+        Get statistics about export capabilities and performance.
+        
+        Returns:
+            dict: Export statistics
+        """
+        stats = {
+            'supported_formats': len(self.supported_formats),
+            'available_exporters': len(self.exporters),
+            'formats': self.supported_formats,
+            'capabilities': self.get_format_capabilities(),
+            'recommendations': {
+                use_case: self.get_recommended_formats(use_case)
+                for use_case in ['general', 'business', 'web', 'archive', 'development', 'presentation']
+            }
+        }
+        
+        return stats
+
+    def cleanup(self):
+        """Clean up any resources used by exporters."""
+        try:
+            for exporter in self.exporters.values():
+                if hasattr(exporter, 'cleanup'):
+                    exporter.cleanup()
+            logger.info("ExportManager cleanup completed")
+        except Exception as e:
+            logger.warning(f"Error during cleanup: {e}")
+
+    def __enter__(self):
+        """Context manager entry."""
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        """Context manager exit with cleanup."""
+        self.cleanup()

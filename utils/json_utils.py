@@ -3,10 +3,14 @@
 JSON processing utilities for YMYL Audit Tool
 
 Helper functions for parsing and manipulating JSON data.
+
+FIXED: Enhanced with content validation and tracking for stale results prevention
 """
 
 import json
-from typing import List, Dict, Any, Optional
+import hashlib
+from datetime import datetime
+from typing import List, Dict, Any, Optional, Tuple
 from utils.logging_utils import setup_logger
 
 logger = setup_logger(__name__)
@@ -16,11 +20,13 @@ def extract_big_chunks(json_data: Dict[str, Any]) -> List[Dict[str, Any]]:
     """
     Extract and format big chunks for AI processing.
     
+    FIXED: Enhanced with content validation and metadata tracking
+    
     Args:
         json_data (dict): Parsed JSON data from chunk processor
         
     Returns:
-        list: List of chunk dictionaries with index, text, and count
+        list: List of chunk dictionaries with index, text, count, and metadata
     """
     try:
         big_chunks = json_data.get('big_chunks', [])
@@ -33,13 +39,23 @@ def extract_big_chunks(json_data: Dict[str, Any]) -> List[Dict[str, Any]]:
             # Join small chunks with newlines
             joined_text = '\n'.join(small_chunks)
             
-            chunks.append({
+            # FIXED: Add content validation and metadata
+            chunk_data = {
                 "index": chunk_index,
                 "text": joined_text,
-                "count": len(small_chunks)
-            })
+                "count": len(small_chunks),
+                "text_length": len(joined_text),
+                "text_hash": _generate_content_hash(joined_text),
+                "extracted_at": datetime.now().isoformat()
+            }
+            
+            # Validate chunk has meaningful content
+            if joined_text.strip() and len(joined_text.strip()) > 10:
+                chunks.append(chunk_data)
+            else:
+                logger.warning(f"Skipping empty or too short chunk {chunk_index}")
         
-        logger.info(f"Extracted {len(chunks)} big chunks from JSON data")
+        logger.info(f"Extracted {len(chunks)} valid big chunks from JSON data")
         return chunks
         
     except Exception as e:
@@ -49,18 +65,37 @@ def extract_big_chunks(json_data: Dict[str, Any]) -> List[Dict[str, Any]]:
 
 def parse_json_output(json_string: str) -> Optional[Dict[str, Any]]:
     """
-    Safely parse JSON string with error handling.
+    Safely parse JSON string with error handling and validation.
+    
+    FIXED: Enhanced with content validation and metadata addition
     
     Args:
         json_string (str): JSON string to parse
         
     Returns:
-        dict or None: Parsed JSON data or None if parsing fails
+        dict or None: Parsed JSON data with metadata or None if parsing fails
     """
     try:
-        return json.loads(json_string)
+        if not json_string or not json_string.strip():
+            logger.error("Empty JSON string provided")
+            return None
+        
+        parsed_data = json.loads(json_string)
+        
+        # FIXED: Add metadata for tracking
+        if isinstance(parsed_data, dict):
+            parsed_data['_metadata'] = {
+                'parsed_at': datetime.now().isoformat(),
+                'content_hash': _generate_content_hash(json_string),
+                'content_length': len(json_string),
+                'parser_version': '1.1.0'
+            }
+        
+        logger.info(f"Successfully parsed JSON ({len(json_string):,} characters)")
+        return parsed_data
+        
     except json.JSONDecodeError as e:
-        logger.error(f"Invalid JSON format: {e}")
+        logger.error(f"Invalid JSON format at line {e.lineno}, column {e.colno}: {e.msg}")
         return None
     except Exception as e:
         logger.error(f"Unexpected error parsing JSON: {e}")
@@ -70,6 +105,8 @@ def parse_json_output(json_string: str) -> Optional[Dict[str, Any]]:
 def validate_chunk_structure(json_data: Dict[str, Any]) -> bool:
     """
     Validate that JSON data has the expected chunk structure.
+    
+    FIXED: Enhanced validation with detailed error reporting
     
     Args:
         json_data (dict): Parsed JSON data to validate
@@ -89,22 +126,46 @@ def validate_chunk_structure(json_data: Dict[str, Any]) -> bool:
             logger.warning("Missing or invalid 'big_chunks' array")
             return False
         
-        # Validate each chunk structure
+        if len(big_chunks) == 0:
+            logger.warning("Empty 'big_chunks' array")
+            return False
+        
+        # Validate each chunk structure with detailed checking
+        valid_chunks = 0
         for i, chunk in enumerate(big_chunks):
             if not isinstance(chunk, dict):
                 logger.warning(f"Chunk {i} is not a dictionary")
-                return False
+                continue
             
             if 'small_chunks' not in chunk:
                 logger.warning(f"Chunk {i} missing 'small_chunks'")
-                return False
+                continue
             
-            if not isinstance(chunk['small_chunks'], list):
+            small_chunks = chunk['small_chunks']
+            if not isinstance(small_chunks, list):
                 logger.warning(f"Chunk {i} 'small_chunks' is not a list")
-                return False
+                continue
+            
+            # FIXED: Validate chunk content quality
+            if len(small_chunks) == 0:
+                logger.warning(f"Chunk {i} has empty 'small_chunks'")
+                continue
+            
+            # Check if chunks have meaningful content
+            total_content = '\n'.join(small_chunks)
+            if len(total_content.strip()) < 10:
+                logger.warning(f"Chunk {i} has insufficient content")
+                continue
+            
+            valid_chunks += 1
         
-        logger.info(f"JSON structure validation passed for {len(big_chunks)} chunks")
-        return True
+        success = valid_chunks > 0
+        if success:
+            logger.info(f"JSON structure validation passed for {valid_chunks}/{len(big_chunks)} chunks")
+        else:
+            logger.error("No valid chunks found in JSON structure")
+        
+        return success
         
     except Exception as e:
         logger.error(f"Error validating chunk structure: {e}")
@@ -113,47 +174,67 @@ def validate_chunk_structure(json_data: Dict[str, Any]) -> bool:
 
 def get_chunk_statistics(json_data: Dict[str, Any]) -> Dict[str, Any]:
     """
-    Calculate statistics about the chunks.
+    Calculate comprehensive statistics about the chunks.
+    
+    FIXED: Enhanced with content quality metrics and validation
     
     Args:
         json_data (dict): Parsed JSON data
         
     Returns:
-        dict: Statistics about the chunks
+        dict: Comprehensive statistics about the chunks
     """
     try:
         big_chunks = json_data.get('big_chunks', [])
         
         total_big_chunks = len(big_chunks)
-        total_small_chunks = sum(len(chunk.get('small_chunks', [])) for chunk in big_chunks)
+        total_small_chunks = 0
+        valid_chunks = 0
+        empty_chunks = 0
         
         # Calculate text statistics
         total_text_length = 0
         chunk_sizes = []
+        content_hashes = []
         
         for chunk in big_chunks:
             small_chunks = chunk.get('small_chunks', [])
             chunk_text = '\n'.join(small_chunks)
             chunk_length = len(chunk_text)
             
+            total_small_chunks += len(small_chunks)
             total_text_length += chunk_length
             chunk_sizes.append(chunk_length)
+            
+            # FIXED: Track content quality
+            if chunk_text.strip() and len(chunk_text.strip()) > 10:
+                valid_chunks += 1
+                content_hashes.append(_generate_content_hash(chunk_text))
+            else:
+                empty_chunks += 1
         
-        # Calculate averages
+        # Calculate averages and quality metrics
         avg_small_chunks_per_big = total_small_chunks / total_big_chunks if total_big_chunks > 0 else 0
         avg_chunk_size = total_text_length / total_big_chunks if total_big_chunks > 0 else 0
+        content_diversity = len(set(content_hashes)) / len(content_hashes) if content_hashes else 0
         
         stats = {
             'total_big_chunks': total_big_chunks,
             'total_small_chunks': total_small_chunks,
+            'valid_chunks': valid_chunks,
+            'empty_chunks': empty_chunks,
             'total_text_length': total_text_length,
             'avg_small_chunks_per_big': round(avg_small_chunks_per_big, 2),
             'avg_chunk_size': round(avg_chunk_size, 2),
             'min_chunk_size': min(chunk_sizes) if chunk_sizes else 0,
-            'max_chunk_size': max(chunk_sizes) if chunk_sizes else 0
+            'max_chunk_size': max(chunk_sizes) if chunk_sizes else 0,
+            'content_diversity': round(content_diversity, 3),
+            'quality_score': round(valid_chunks / total_big_chunks if total_big_chunks > 0 else 0, 3),
+            'metadata': json_data.get('_metadata', {}),
+            'calculated_at': datetime.now().isoformat()
         }
         
-        logger.info(f"Calculated chunk statistics: {stats}")
+        logger.info(f"Calculated comprehensive chunk statistics: {stats['total_big_chunks']} chunks, {stats['quality_score']} quality score")
         return stats
         
     except Exception as e:
@@ -161,17 +242,25 @@ def get_chunk_statistics(json_data: Dict[str, Any]) -> Dict[str, Any]:
         return {
             'total_big_chunks': 0,
             'total_small_chunks': 0,
+            'valid_chunks': 0,
+            'empty_chunks': 0,
             'total_text_length': 0,
             'avg_small_chunks_per_big': 0,
             'avg_chunk_size': 0,
             'min_chunk_size': 0,
-            'max_chunk_size': 0
+            'max_chunk_size': 0,
+            'content_diversity': 0,
+            'quality_score': 0,
+            'error': str(e),
+            'calculated_at': datetime.now().isoformat()
         }
 
 
 def format_json_for_display(json_data: Dict[str, Any], max_length: int = 1000) -> str:
     """
     Format JSON data for display with truncation if needed.
+    
+    FIXED: Enhanced formatting with metadata preservation
     
     Args:
         json_data (dict): JSON data to format
@@ -181,7 +270,10 @@ def format_json_for_display(json_data: Dict[str, Any], max_length: int = 1000) -
         str: Formatted JSON string
     """
     try:
-        formatted = json.dumps(json_data, indent=2, ensure_ascii=False)
+        # FIXED: Create display version without internal metadata
+        display_data = _create_display_version(json_data)
+        
+        formatted = json.dumps(display_data, indent=2, ensure_ascii=False)
         
         if len(formatted) > max_length:
             truncated = formatted[:max_length]
@@ -198,3 +290,218 @@ def format_json_for_display(json_data: Dict[str, Any], max_length: int = 1000) -
     except Exception as e:
         logger.error(f"Error formatting JSON for display: {e}")
         return f"Error formatting JSON: {str(e)}"
+
+
+def compare_json_content(json1: str, json2: str) -> Dict[str, Any]:
+    """
+    Compare two JSON content strings for differences.
+    
+    FIXED: New function to help detect content changes
+    
+    Args:
+        json1 (str): First JSON string
+        json2 (str): Second JSON string
+        
+    Returns:
+        dict: Comparison results
+    """
+    try:
+        hash1 = _generate_content_hash(json1)
+        hash2 = _generate_content_hash(json2)
+        
+        data1 = parse_json_output(json1)
+        data2 = parse_json_output(json2)
+        
+        if not data1 or not data2:
+            return {
+                'identical': False,
+                'error': 'Failed to parse one or both JSON strings',
+                'hash1': hash1,
+                'hash2': hash2
+            }
+        
+        stats1 = get_chunk_statistics(data1)
+        stats2 = get_chunk_statistics(data2)
+        
+        return {
+            'identical': hash1 == hash2,
+            'hash1': hash1,
+            'hash2': hash2,
+            'chunks1': stats1.get('total_big_chunks', 0),
+            'chunks2': stats2.get('total_big_chunks', 0),
+            'length1': len(json1),
+            'length2': len(json2),
+            'content_diversity1': stats1.get('content_diversity', 0),
+            'content_diversity2': stats2.get('content_diversity', 0),
+            'compared_at': datetime.now().isoformat()
+        }
+        
+    except Exception as e:
+        logger.error(f"Error comparing JSON content: {e}")
+        return {
+            'identical': False,
+            'error': str(e),
+            'compared_at': datetime.now().isoformat()
+        }
+
+
+def validate_content_freshness(content_data: Dict[str, Any], ai_result: Dict[str, Any]) -> Dict[str, bool]:
+    """
+    Validate that AI results correspond to the given content data.
+    
+    FIXED: New function for comprehensive freshness validation
+    
+    Args:
+        content_data (dict): Content processing result
+        ai_result (dict): AI analysis result
+        
+    Returns:
+        dict: Validation results with specific checks
+    """
+    try:
+        validation = {
+            'is_fresh': True,
+            'timestamp_match': True,
+            'url_match': True,
+            'content_match': True,
+            'errors': []
+        }
+        
+        # Check processing timestamps
+        content_timestamp = content_data.get('processing_timestamp')
+        ai_timestamp = ai_result.get('processing_timestamp')
+        
+        if content_timestamp is not None and ai_timestamp is not None:
+            validation['timestamp_match'] = (content_timestamp == ai_timestamp)
+        else:
+            validation['timestamp_match'] = False
+            validation['errors'].append('Missing timestamp data')
+        
+        # Check source URLs
+        content_url = content_data.get('url')
+        ai_url = ai_result.get('source_url')
+        
+        if content_url and ai_url:
+            validation['url_match'] = (content_url == ai_url)
+        else:
+            validation['url_match'] = False
+            validation['errors'].append('Missing URL data')
+        
+        # Check content hashes if available
+        content_json = content_data.get('json_output')
+        ai_content_hash = ai_result.get('content_hash')
+        
+        if content_json and ai_content_hash:
+            current_hash = _generate_content_hash(content_json)
+            validation['content_match'] = (current_hash == ai_content_hash)
+        else:
+            validation['content_match'] = True  # Assume match if no hash data
+        
+        # Overall freshness determination
+        validation['is_fresh'] = (
+            validation['timestamp_match'] and 
+            validation['url_match'] and 
+            validation['content_match']
+        )
+        
+        logger.info(f"Content freshness validation: {'Fresh' if validation['is_fresh'] else 'Stale'}")
+        return validation
+        
+    except Exception as e:
+        logger.error(f"Error validating content freshness: {e}")
+        return {
+            'is_fresh': False,
+            'timestamp_match': False,
+            'url_match': False,
+            'content_match': False,
+            'errors': [str(e)]
+        }
+
+
+def _generate_content_hash(content: str) -> str:
+    """
+    Generate a hash for content to enable quick comparison.
+    
+    Args:
+        content (str): Content to hash
+        
+    Returns:
+        str: SHA-256 hash of the content
+    """
+    return hashlib.sha256(content.encode('utf-8')).hexdigest()[:16]  # Short hash for display
+
+
+def _create_display_version(json_data: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Create a version of JSON data suitable for display (removing internal metadata).
+    
+    Args:
+        json_data (dict): Original JSON data
+        
+    Returns:
+        dict: Display version without internal fields
+    """
+    if not isinstance(json_data, dict):
+        return json_data
+    
+    display_data = {}
+    for key, value in json_data.items():
+        # Skip internal metadata fields
+        if key.startswith('_'):
+            continue
+        display_data[key] = value
+    
+    return display_data
+
+
+def get_content_summary(json_data: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Get a quick summary of JSON content for UI display.
+    
+    FIXED: New function for quick content overview
+    
+    Args:
+        json_data (dict): Parsed JSON data
+        
+    Returns:
+        dict: Content summary
+    """
+    try:
+        stats = get_chunk_statistics(json_data)
+        metadata = json_data.get('_metadata', {})
+        
+        return {
+            'total_chunks': stats.get('total_big_chunks', 0),
+            'valid_chunks': stats.get('valid_chunks', 0),
+            'total_length': stats.get('total_text_length', 0),
+            'quality_score': stats.get('quality_score', 0),
+            'content_hash': metadata.get('content_hash', 'unknown'),
+            'parsed_at': metadata.get('parsed_at', 'unknown'),
+            'avg_chunk_size': stats.get('avg_chunk_size', 0)
+        }
+        
+    except Exception as e:
+        logger.error(f"Error getting content summary: {e}")
+        return {
+            'total_chunks': 0,
+            'valid_chunks': 0,
+            'total_length': 0,
+            'quality_score': 0,
+            'content_hash': 'error',
+            'parsed_at': 'error',
+            'avg_chunk_size': 0,
+            'error': str(e)
+        }
+
+
+# FIXED: Enhanced exports for better module interface
+__all__ = [
+    'extract_big_chunks',
+    'parse_json_output',
+    'validate_chunk_structure',
+    'get_chunk_statistics',
+    'format_json_for_display',
+    'compare_json_content',
+    'validate_content_freshness',
+    'get_content_summary'
+]

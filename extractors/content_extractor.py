@@ -3,7 +3,7 @@
 Content Extractor for YMYL Audit Tool
 
 Handles web scraping and content extraction from URLs.
-Extracts structured content including headings, paragraphs, and special sections.
+Extracts structured content including headings, paragraphs, tables, lists, and special sections.
 """
 
 import requests
@@ -22,6 +22,8 @@ class ContentExtractor:
     Handles various content types including:
     - Headings (H1-H6)
     - Paragraphs and lead text
+    - Tables (with header-aware formatting)
+    - Lists (ordered, unordered, definition)
     - Subtitles and special sections
     - FAQ sections
     - Author information
@@ -177,7 +179,7 @@ class ContentExtractor:
         return None
 
     def _extract_article_content(self, soup: BeautifulSoup) -> list:
-        """Extract article content with proper structure."""
+        """Extract article content with proper structure including tables and lists."""
         content_parts = []
         article = soup.find('article')
         
@@ -190,7 +192,7 @@ class ContentExtractor:
             tab_content.decompose()
         
         # Process all elements in document order within article
-        for element in article.find_all(['h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'span', 'p']):
+        for element in article.find_all(['h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'span', 'p', 'table', 'ul', 'ol', 'dl']):
             text = element.get_text(separator='\n', strip=True)
             if not text:
                 continue
@@ -226,6 +228,83 @@ class ContentExtractor:
             else:
                 return f"CONTENT: {text}"
         
+        # Handle tables
+        elif tag_name == 'table':
+            return self._format_table(element)
+        
+        # Handle lists
+        elif tag_name in ['ul', 'ol']:
+            return self._format_list(element)
+        
+        # Handle definition lists
+        elif tag_name == 'dl':
+            return self._format_definition_list(element)
+        
+        return None
+
+    def _format_table(self, table) -> Optional[str]:
+        """Format table with header-aware structure."""
+        rows = []
+        headers = []
+        
+        # Try to identify headers
+        header_row = table.find('tr')
+        if header_row and header_row.find('th'):
+            headers = [th.get_text(strip=True) for th in header_row.find_all('th')]
+        
+        # Process data rows
+        data_rows = table.find_all('tr')
+        start_idx = 1 if headers else 0
+        
+        for tr in data_rows[start_idx:]:
+            cells = [td.get_text(strip=True) for td in tr.find_all(['td', 'th'])]
+            if cells and any(cell for cell in cells):  # Skip empty rows
+                if headers and len(cells) == len(headers):
+                    # Create header: value pairs
+                    paired = [f"{h}: {v}" for h, v in zip(headers, cells) if v.strip()]
+                    if paired:
+                        rows.append(" | ".join(paired))
+                else:
+                    # Simple cell joining
+                    non_empty_cells = [cell for cell in cells if cell.strip()]
+                    if non_empty_cells:
+                        rows.append(" | ".join(non_empty_cells))
+        
+        if rows:
+            return f"TABLE: {' // '.join(rows)}"
+        return None
+
+    def _format_list(self, list_element) -> Optional[str]:
+        """Format lists preserving key hierarchy info."""
+        items = []
+        list_type = "ORDERED" if list_element.name == 'ol' else "UNORDERED"
+        
+        for li in list_element.find_all('li', recursive=False):
+            text = li.get_text(separator=' ', strip=True)
+            if text:
+                items.append(text)
+        
+        if items:
+            return f"{list_type}_LIST: {' // '.join(items)}"
+        return None
+
+    def _format_definition_list(self, dl_element) -> Optional[str]:
+        """Format definition lists as term: definition pairs."""
+        definitions = []
+        
+        # Group dt/dd pairs
+        current_term = None
+        for element in dl_element.find_all(['dt', 'dd']):
+            if element.name == 'dt':
+                current_term = element.get_text(strip=True)
+            elif element.name == 'dd' and current_term:
+                definition = element.get_text(separator=' ', strip=True)
+                if definition:
+                    definitions.append(f"{current_term}: {definition}")
+                current_term = None
+        
+        if definitions:
+            return f"DEFINITION_LIST: {' // '.join(definitions)}"
         return None
 
     def _extract_faq(self, soup: BeautifulSoup) -> Optional[str]:

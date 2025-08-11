@@ -684,19 +684,19 @@ def _create_json_tab(result: Dict[str, Any]):
     else:
         st.info("**Source**: Direct JSON Input")
 
-    # Display content with decoding fix applied
+    # Display content
+    json_output = decode_unicode_escapes(json_output) # <--- ADD THIS LINE
     st.markdown("**Processed JSON Content:**")
-    
-    # Use the decoded version for display and download
-    st.code(decoded_json_output, language='json') 
+    st.code(json_output, language='json') # <--- THIS LINE (unchanged)
 
-    # Download button for the decoded JSON
+    # Download button
+    json_output = decode_unicode_escapes(json_output) # <--- ADD THIS LINE (again, just to be safe, though the one above should be enough)
     st.download_button(
-        label="💾 Download Decoded JSON",
-        data=decoded_json_output, # <-- Use decoded content
-        file_name="processed_chunks_decoded.json",
+        label="💾 Download JSON",
+        data=json_output, # <--- AND THIS LINE (unchanged)
+        file_name="processed_chunks.json",
         mime="application/json",
-        key="download_decoded_json"
+        key="download_json"
     )
 
     # --- Optional: Show decoding info ---

@@ -669,7 +669,7 @@ def _create_json_tab(result: Dict[str, Any]):
     FIXED: Apply Unicode decoding to make special characters readable and ensure
     the decoded version is displayed.
     """
-    json_output = result.get('json_output', '{}')
+    json_output = parse_json_output(json_output)
 
     st.markdown("### 🔧 Processed JSON Output")
 

@@ -669,33 +669,33 @@ def _create_json_tab(result: Dict[str, Any]):
     FIXED: Apply Unicode decoding to make special characters readable and ensure
     the decoded version is displayed.
     """
-    # Get the JSON output
     json_output = result.get('json_output', '{}')
 
     st.markdown("### 🔧 Processed JSON Output")
 
-    # Assume we need to decode initially
-    decoded_json = json_output
+    # Always attempt decoding in the UI for consistency and to ensure
+    # the displayed content is as readable as possible.
+    # This handles cases where ChunkProcessor might have partially failed
+    # or where direct JSON input might contain escapes.
+    decoded_json = decode_unicode_escapes(json_output) # UI's decoding attempt
     has_unicode_escapes_initially = '\\u' in json_output
 
-    # Always attempt decoding to ensure consistency and handle cases where it might be needed
-    # regardless of the source (URL processing or direct input)
-    decoded_json = decode_unicode_escapes(json_output)
-
-    # Provide feedback on the decoding attempt
+    # Provide feedback
     if has_unicode_escapes_initially:
-        st.info("🔤 Unicode escape sequences detected in the source.")
-        # Check if decoding actually changed the content
+        st.info("🔤 Unicode escape sequences detected.")
         if decoded_json != json_output:
-            st.success("✅ Successfully decoded Unicode characters for readability.")
+            st.success("✅ Successfully decoded Unicode characters for display.")
         else:
-            # This case handles if the source was already decoded or decoding had no effect
-            st.info("ℹ️ Unicode decoding attempted. Content may already have been decoded or no changes were needed.")
+            # This means either ChunkProcessor already decoded it,
+            # or our UI decoding didn't change it (maybe it was already fully decoded
+            # or our decoder didn't catch something).
+            # Still, we display the result of our attempt (decoded_json).
+            st.info("ℹ️ Unicode decoding attempted. Displaying potentially decoded content.")
     else:
         st.info("✅ No \\u escape sequences found in the source.")
 
-    st.markdown("**JSON Content (Decoded):**") # Make it clear this is the potentially decoded version
-    # Display the potentially decoded JSON (THIS IS THE KEY CHANGE)
+    st.markdown("**JSON Content (Processed):**")
+    # CRITICAL: Always display the result of the UI's decoding attempt (decoded_json)
     st.code(decoded_json, language='json')
 
     # Download buttons (use decoded_json for the main download)

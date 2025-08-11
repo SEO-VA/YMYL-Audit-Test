@@ -295,6 +295,19 @@ class ChunkProcessor:
             # FIXED: Decode Unicode escapes to make special characters readable
             self._log("Decoding Unicode escapes", "in_progress")
             decoded_content = decode_unicode_escapes(decoded_content)
+                        # In ChunkProcessor._extract_json_from_button, after the decoding line:
+            # decoded_content = decode_unicode_escapes(decoded_content)
+            # Add temporarily for debugging:
+            if '\\u' in decoded_content:
+                logger.warning("DEBUG: Still found \\u in decoded_content after decode_unicode_escapes!")
+                # Optionally log a sample
+                sample = decoded_content[:200]
+                logger.info(f"DEBUG Sample after decoding: {sample}")
+            else:
+                logger.info("DEBUG: No \\u found in decoded_content after decode_unicode_escapes - looks good!")
+
+            # Make sure the final return passes this decoded content:
+            # return decoded_content
             
             self._log(f"Extraction complete. Retrieved {len(decoded_content):,} characters", "success")
             logger.info(f"Successfully extracted JSON: {len(decoded_content):,} characters")

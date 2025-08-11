@@ -8,6 +8,7 @@ Uses Selenium WebDriver for browser automation.
 
 import time
 import html
+import json  # ADDED: Import json module for Unicode handling
 import platform
 from typing import Tuple, Optional, Callable
 from selenium import webdriver
@@ -62,6 +63,35 @@ class ChunkProcessor:
         
         if self.log_callback:
             self.log_callback(formatted_message)
+
+    # NEW: Add this method to fix Unicode characters
+    def _decode_unicode_escapes(self, json_string: str) -> str:
+        """
+        Decode Unicode escape sequences in JSON string to readable characters.
+        
+        This fixes issues where special characters like é, à, ç appear as \u00e9, \u00e0, \u00e7
+        
+        Args:
+            json_string (str): JSON string with Unicode escapes
+            
+        Returns:
+            str: JSON string with readable characters
+        """
+        try:
+            self._log("Converting Unicode escapes to readable characters", "in_progress")
+            
+            # Parse JSON to convert Unicode escapes, then dump back with ensure_ascii=False
+            parsed = json.loads(json_string)
+            readable_json = json.dumps(parsed, ensure_ascii=False, indent=2)
+            
+            self._log("Unicode conversion completed successfully", "success")
+            return readable_json
+            
+        except json.JSONDecodeError as e:
+            # If JSON parsing fails, return original string
+            logger.warning(f"Could not decode Unicode escapes: {e}")
+            self._log("Unicode conversion failed, using original content", "warning")
+            return json_string
 
     def _setup_driver(self) -> bool:
         """
@@ -265,6 +295,9 @@ class ChunkProcessor:
             # Decode HTML entities
             self._log("Decoding HTML entities", "in_progress")
             decoded_content = html.unescape(final_content)
+            
+            # NEW: Decode Unicode escapes to make special characters readable
+            decoded_content = self._decode_unicode_escapes(decoded_content)
             
             self._log(f"Extraction complete. Retrieved {len(decoded_content):,} characters", "success")
             logger.info(f"Successfully extracted JSON: {len(decoded_content):,} characters")

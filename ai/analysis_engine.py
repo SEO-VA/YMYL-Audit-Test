@@ -249,57 +249,17 @@ class AnalysisEngine:
         total_high = len(all_issues["high"])
         total_medium = len(all_issues["medium"])
         total_low = len(all_issues["low"])
-        total_sections = len(section_summaries)
-        
-        # Determine overall status
-        if total_critical > 0:
-            overall_status = "❌ CRITICAL ISSUES FOUND"
-            risk_level = "🔴 CRITICAL"
-            action_required = "Immediate action required before publication"
-        elif total_high > 0:
-            overall_status = "⚠️ REVIEW REQUIRED"
-            risk_level = "🟠 HIGH"
-            action_required = "Address high-priority issues within 24 hours"
-        elif total_medium > 0:
-            overall_status = "🔵 MINOR ISSUES DETECTED"
-            risk_level = "🟡 MEDIUM"
-            action_required = "Address in next content update cycle"
-        else:
-            overall_status = "✅ COMPLIANT"
-            risk_level = "🟢 LOW"
-            action_required = "No immediate action required"
-        
-        # Calculate compliance score
-        total_issues = total_critical + total_high + total_medium + total_low
-        if total_issues == 0:
-            compliance_score = "100%"
-        else:
-            # Weight critical and high issues more heavily
-            weighted_score = max(0, 100 - (total_critical * 25) - (total_high * 10) - (total_medium * 3) - total_low)
-            compliance_score = f"{weighted_score:.0f}%"
         
         return f"""# 🎯 YMYL Compliance Audit Report
 
-## 📊 Executive Summary
+## 📈 Issue Breakdown
 
-**Overall Status:** {overall_status}  
-**Risk Level:** {risk_level}  
-**Compliance Score:** {compliance_score}  
-**Audit Date:** {datetime.now().strftime("%B %d, %Y")}  
-**Content Type:** Online Casino/Gambling Content
-
-**Action Required:** {action_required}
-
-### 📈 Issue Breakdown
-
-| Priority Level | Count | Impact | Timeline |
-|---------------|-------|--------|----------|
-| 🔴 Critical | {total_critical} | User safety risk | Fix immediately |
-| 🟠 High | {total_high} | E-E-A-T violation | Within 24 hours |
-| 🟡 Medium | {total_medium} | Content quality | Next update |
-| 🔵 Low | {total_low} | Minor improvement | Optional |
-
-**Total Issues Found:** {total_issues} across {total_sections} sections"""
+| Priority Level | Count |
+|---------------|-------|
+| 🔴 Critical | {total_critical} |
+| 🟠 High | {total_high} |
+| 🟡 Medium | {total_medium} |
+| 🔵 Low | {total_low} |"""
 
     def _create_priority_findings(self, all_issues: Dict) -> str:
         """Create actionable priority sections."""
@@ -333,94 +293,40 @@ class AnalysisEngine:
 
     def _create_section_overview(self, section_summaries: List[Dict]) -> str:
         """Create visual section status overview."""
-        if not section_summaries:
-            return ""
-        
-        sections = ["## 📋 Section Status Overview\n"]
-        
-        # Create status table
-        sections.append("| Section | Status | Issues | Priority |")
-        sections.append("|---------|--------|--------|----------|")
-        
-        for summary in section_summaries:
-            section_name = summary["section"]
-            status = summary["status"]
-            issue_count = summary["issue_count"]
-            priority = summary["priority"]
-            
-            # Truncate long section names
-            if len(section_name) > 25:
-                section_name = section_name[:22] + "..."
-            
-            sections.append(f"| {section_name} | {status} | {issue_count} | {priority} |")
-        
-        # Add summary stats
-        total_sections = len(section_summaries)
-        compliant_sections = len([s for s in section_summaries if "✅" in s["status"]])
-        critical_sections = len([s for s in section_summaries if "❌" in s["status"]])
-        
-        sections.append(f"\n**Section Summary:** {compliant_sections}/{total_sections} compliant • {critical_sections} with critical issues")
-        
-        return '\n'.join(sections)
+        # Remove this entire section - return empty string
+        return ""
 
     def _create_detailed_findings(self, analysis_results: List[Dict[str, Any]]) -> str:
         """Create detailed findings section with clean formatting."""
-        sections = ["## 📝 Detailed Section Analysis\n"]
+        sections = ["## 📝 Detailed Analysis\n"]
         
-        for result in analysis_results:
+        for i, result in enumerate(analysis_results):
             if result.get("success"):
                 # Clean up the AI response content
                 content = result.get("content", "")
                 cleaned_content = self._clean_ai_response(content)
+                
+                # Add clear section separator
+                if i > 0:  # Don't add separator before first section
+                    sections.append("\n" + "="*80 + "\n")
+                
                 sections.append(cleaned_content)
-                sections.append("")  # Add spacing between sections
             else:
                 # Handle failed analyses cleanly
                 chunk_idx = result.get('chunk_index', 'Unknown')
-                sections.append(f"### ⚠️ Analysis Error - Section {chunk_idx}")
+                if i > 0:
+                    sections.append("\n" + "="*80 + "\n")
+                sections.append(f"# ⚠️ Analysis Error - Section {chunk_idx}")
                 sections.append(f"**Status:** Processing failed")
                 sections.append(f"**Error:** {result.get('error', 'Unknown error')}")
                 sections.append("**Action:** Manual review required")
-                sections.append("")
         
         return '\n'.join(sections)
 
     def _create_technical_appendix(self, analysis_results: List[Dict[str, Any]]) -> str:
         """Create collapsible technical details section."""
-        successful_count = len([r for r in analysis_results if r.get("success")])
-        failed_count = len(analysis_results) - successful_count
-        processing_time = getattr(self, 'analysis_stats', {}).get('processing_time', 0)
-        
-        return f"""## 🔧 Technical Information
-
-<details>
-<summary><strong>Processing Details</strong> (Click to expand)</summary>
-
-### Analysis Metrics
-- **Total Sections Processed:** {len(analysis_results)}
-- **Successfully Analyzed:** {successful_count}
-- **Analysis Failures:** {failed_count}
-- **Success Rate:** {(successful_count / len(analysis_results) * 100):.1f}%
-- **Total Processing Time:** {processing_time:.2f} seconds
-- **Average Time per Section:** {(processing_time / len(analysis_results)):.2f} seconds
-
-### System Information
-- **Analysis Engine:** AI-powered YMYL compliance analysis
-- **Assistant ID:** {getattr(self.assistant_client, 'assistant_id', 'N/A')}
-- **Analysis Date:** {datetime.now().isoformat()}
-- **Parallel Processing:** {MAX_PARALLEL_REQUESTS} concurrent requests
-
-### Quality Assurance
-- **Guidelines:** Google Search Quality Rater Guidelines (SQRG)
-- **Focus Areas:** E-E-A-T compliance for YMYL content
-- **Content Type:** Online gambling/casino industry
-- **Audit Scope:** Section-by-section comprehensive review
-
-</details>
-
----
-
-*Report generated by AI-powered YMYL compliance analysis system*"""
+        # Remove technical appendix entirely
+        return ""
 
     # Helper methods for content parsing and cleaning
     def _extract_section_name(self, content: str) -> str:
@@ -451,10 +357,6 @@ class AnalysisEngine:
 
     def _clean_ai_response(self, content: str) -> str:
         """Clean up AI response for better readability."""
-        # Remove excessive technical markers
-        content = content.replace("---", "")
-        
-        # Ensure proper section headers
         lines = content.split('\n')
         cleaned_lines = []
         
@@ -463,12 +365,33 @@ class AnalysisEngine:
             if not cleaned_lines and not line.strip():
                 continue
             
-            # Clean up headers
+            # Remove language detection and translation introductions
+            if any(phrase in line.lower() for phrase in [
+                "language detection", "english translation of problematic", 
+                "言語検出", "英語翻訳", "language detection:", "english translation:"
+            ]):
+                continue
+            
+            # Remove summary sections at the end
+            if any(phrase in line.lower() for phrase in [
+                "summary:", "✅ no other issues", "the content is generally",
+                "however, it requires improvements", "summary:"
+            ]):
+                break
+            
+            # Make section headers more prominent - convert single # to ##
             if line.startswith('#') and not line.startswith('##'):
-                if not line.startswith('# 🎯'):  # Keep our main header
-                    line = '### ' + line.strip('# ').strip()
+                line = '#' + line
+            
+            # Add issue separators - convert --- to visual separator
+            if line.strip() == "---":
+                line = "\n" + "-" * 60 + "\n"
             
             cleaned_lines.append(line)
+        
+        # Remove trailing empty lines
+        while cleaned_lines and not cleaned_lines[-1].strip():
+            cleaned_lines.pop()
         
         return '\n'.join(cleaned_lines).strip()
 

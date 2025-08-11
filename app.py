@@ -8,7 +8,7 @@ This is the clean, refactored version with modular architecture.
 NEW FEATURE: Dual input mode - URL extraction OR direct JSON input
 SECURITY: Added simple authentication using Streamlit secrets
 """
-
+import re
 import asyncio
 import streamlit as st
 import time
@@ -43,6 +43,18 @@ st.set_page_config(
 
 # Setup logging
 logger = setup_logger(__name__)
+
+def decode_unicode_escapes(text: str) -> str:
+    """Decode Unicode escape sequences in text to readable characters."""
+    try:
+        import re
+        def decode_match(match):
+            unicode_code = match.group(1)
+            return chr(int(unicode_code, 16))
+        return re.sub(r'\\u([0-9a-fA-F]{4})', decode_match, text)
+    except Exception as e:
+        logger.warning(f"Unicode decoding failed: {e}")
+        return text
 
 # =============================================================================
 # AUTHENTICATION SYSTEM
@@ -296,7 +308,7 @@ def process_url_workflow(url: str, debug_mode: bool = False) -> dict:
                 result['error'] = f"Chunk processing failed: {error}"
                 return result
             
-            result['json_output'] = json_output
+            result['json_output'] = decode_unicode_escapes(json_output)
             log_callback("🎉 URL workflow complete!")
         
         # Store processing timestamp and mode
@@ -326,7 +338,7 @@ def process_direct_json_workflow(json_content: str, debug_mode: bool = False) ->
         'success': False,
         'url': 'Direct JSON Input',  # Placeholder for compatibility
         'extracted_content': 'Content provided directly as chunked JSON',
-        'json_output': json_content,
+        'json_output': decode_unicode_escapes(json_content),
         'error': None,
         'input_mode': 'direct_json',  # NEW: Track input mode
         'processing_timestamp': st.session_state.get('processing_timestamp', 0) + 1

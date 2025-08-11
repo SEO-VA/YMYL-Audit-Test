@@ -64,48 +64,6 @@ class ChunkProcessor:
         if self.log_callback:
             self.log_callback(formatted_message)
 
-    def _decode_unicode_escapes(self, json_string: str) -> str:
-        """
-        Decode Unicode escape sequences in JSON string to readable characters.
-        
-        This fixes issues where special characters appear as \u00e9, \u30aa, etc.
-        
-        Args:
-            json_string (str): JSON string with Unicode escapes
-            
-        Returns:
-            str: JSON string with readable characters
-        """
-        try:
-            self._log("Converting Unicode escapes to readable characters", "in_progress")
-            
-            print("DEBUG: Before conversion (sample):", json_string[:200])
-            
-            # Method 1: Direct string replacement using regex and codecs
-            import re
-            import codecs
-            
-            def decode_match(match):
-                # Extract the Unicode code point (e.g., "30aa" from "\u30aa")
-                unicode_code = match.group(1)
-                # Convert to actual character
-                return chr(int(unicode_code, 16))
-            
-            # Find all \uXXXX patterns and replace them
-            decoded_content = re.sub(r'\\u([0-9a-fA-F]{4})', decode_match, json_string)
-            
-            print("DEBUG: After conversion (sample):", decoded_content[:200])
-            
-            self._log("Unicode conversion completed successfully", "success")
-            return decoded_content
-            
-        except Exception as e:
-            # If anything fails, return original string
-            logger.warning(f"Could not decode Unicode escapes: {e}")
-            self._log("Unicode conversion failed, using original content", "warning")
-            print("DEBUG: Unicode conversion failed:", str(e))
-            return json_string
-
     def _setup_driver(self) -> bool:
         """
         Set up Chrome WebDriver with optimal configuration.

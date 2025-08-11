@@ -850,7 +850,7 @@ def _create_json_tab(result: Dict[str, Any]):
     """
     Create JSON output tab content with proper Unicode display.
     
-    FIXED: Now properly displays Unicode characters using centralized function
+    FIXED: Now properly displays Unicode characters using the raw decoded data
     """
     st.subheader("🔧 JSON Output")
 
@@ -862,19 +862,24 @@ def _create_json_tab(result: Dict[str, Any]):
     else:
         st.info("**Source**: Direct JSON Input")
 
-    # FIXED: Use the proper raw JSON string with Unicode already decoded
+    # FIXED: Use the raw JSON string which has Unicode already decoded
     json_output_raw = result.get('json_output_raw')
-    json_output_dict = result.get('json_output')
     
     if json_output_raw:
-        # We have the raw decoded string - perfect for display
+        # Perfect! We have the decoded raw string
         display_json = json_output_raw
-    elif json_output_dict:
-        # Fallback: convert dict back to pretty JSON string
-        display_json = get_display_json_string(json_output_dict)
+        st.success("✅ Using decoded raw JSON data")
     else:
-        # Last resort: try old format
-        display_json = get_display_json_string(result.get('json_output', '{}'))
+        # Fallback: convert dict back to pretty JSON string
+        json_output_dict = result.get('json_output')
+        if json_output_dict:
+            from utils.json_utils import get_display_json_string
+            display_json = get_display_json_string(json_output_dict)
+            st.warning("⚠️ Using fallback conversion from dict")
+        else:
+            # Last resort
+            display_json = '{"error": "No JSON data found"}'
+            st.error("❌ No JSON data available")
 
     # Display content
     st.markdown("**Processed JSON Content:**")
@@ -889,7 +894,7 @@ def _create_json_tab(result: Dict[str, Any]):
         key="download_json"
     )
 
-    # Show content info
+    # Show content info for debugging
     if display_json:
         char_count = len(display_json)
         unicode_count = display_json.count('\\u')
@@ -897,15 +902,24 @@ def _create_json_tab(result: Dict[str, Any]):
         with st.expander("🔍 Content Info"):
             st.write(f"**Content Length**: {char_count:,} characters")
             st.write(f"**Unicode Escapes Found**: {unicode_count}")
+            st.write(f"**Data Source**: {'json_output_raw' if json_output_raw else 'converted from dict'}")
             
             if unicode_count == 0:
                 st.success("✅ All Unicode characters properly decoded and readable")
             else:
                 st.warning(f"⚠️ {unicode_count} Unicode escape sequences still present")
             
-            # Show sample of content for debugging
-            sample = display_json[:200] + "..." if len(display_json) > 200 else display_json
+            # Show sample with Japanese characters
+            sample = display_json[:400] + "..." if len(display_json) > 400 else display_json
             st.code(sample, language='json')
+            
+            # Test for Japanese characters specifically
+            japanese_chars = ['マ', 'カ', 'オ', 'ゲ', 'ー', 'ミ', 'ン', 'グ']
+            found_japanese = [char for char in japanese_chars if char in display_json]
+            if found_japanese:
+                st.success(f"✅ Japanese characters detected: {', '.join(found_japanese[:5])}")
+            else:
+                st.info("ℹ️ No Japanese characters found in sample")
 
 def _create_content_tab(result: Dict[str, Any]):
     """

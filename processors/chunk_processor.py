@@ -64,12 +64,11 @@ class ChunkProcessor:
         if self.log_callback:
             self.log_callback(formatted_message)
 
-    # NEW: Add this method to fix Unicode characters
     def _decode_unicode_escapes(self, json_string: str) -> str:
         """
         Decode Unicode escape sequences in JSON string to readable characters.
         
-        This fixes issues where special characters like é, à, ç appear as \u00e9, \u00e0, \u00e7
+        This fixes issues where special characters appear as \u00e9, \u30aa, etc.
         
         Args:
             json_string (str): JSON string with Unicode escapes
@@ -80,17 +79,31 @@ class ChunkProcessor:
         try:
             self._log("Converting Unicode escapes to readable characters", "in_progress")
             
-            # Parse JSON to convert Unicode escapes, then dump back with ensure_ascii=False
-            parsed = json.loads(json_string)
-            readable_json = json.dumps(parsed, ensure_ascii=False, indent=2)
+            print("DEBUG: Before conversion (sample):", json_string[:200])
+            
+            # Method 1: Direct string replacement using regex and codecs
+            import re
+            import codecs
+            
+            def decode_match(match):
+                # Extract the Unicode code point (e.g., "30aa" from "\u30aa")
+                unicode_code = match.group(1)
+                # Convert to actual character
+                return chr(int(unicode_code, 16))
+            
+            # Find all \uXXXX patterns and replace them
+            decoded_content = re.sub(r'\\u([0-9a-fA-F]{4})', decode_match, json_string)
+            
+            print("DEBUG: After conversion (sample):", decoded_content[:200])
             
             self._log("Unicode conversion completed successfully", "success")
-            return readable_json
+            return decoded_content
             
-        except json.JSONDecodeError as e:
-            # If JSON parsing fails, return original string
+        except Exception as e:
+            # If anything fails, return original string
             logger.warning(f"Could not decode Unicode escapes: {e}")
             self._log("Unicode conversion failed, using original content", "warning")
+            print("DEBUG: Unicode conversion failed:", str(e))
             return json_string
 
     def _setup_driver(self) -> bool:

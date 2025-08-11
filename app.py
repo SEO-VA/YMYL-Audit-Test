@@ -1,15 +1,18 @@
 #!/usr/bin/env python3
 """
-YMYL Audit Tool - Main Application
+YMYL Audit Tool - Main Application with Authentication
 
 Streamlined main application that orchestrates all components.
 This is the clean, refactored version with modular architecture.
 
 NEW FEATURE: Dual input mode - URL extraction OR direct JSON input
+SECURITY: Added simple authentication using Streamlit secrets
 """
 
 import asyncio
 import streamlit as st
+import time
+from collections import defaultdict
 from extractors.content_extractor import ContentExtractor
 from processors.chunk_processor import ChunkProcessor
 from ai.analysis_engine import AnalysisEngine
@@ -18,7 +21,7 @@ from ui.components import (
     create_page_header,
     create_sidebar_config,
     create_how_it_works_section,
-    create_dual_input_section,  # NEW: Dual input instead of URL only
+    create_dual_input_section,
     create_debug_logger,
     create_simple_progress_tracker,
     create_ai_analysis_section,
@@ -40,6 +43,146 @@ st.set_page_config(
 
 # Setup logging
 logger = setup_logger(__name__)
+
+# =============================================================================
+# AUTHENTICATION SYSTEM
+# =============================================================================
+
+def check_authentication():
+    """
+    Simple authentication system using Streamlit secrets.
+    Returns True if user is authenticated, False otherwise.
+    """
+    
+    # Initialize session state
+    if "authenticated" not in st.session_state:
+        st.session_state.authenticated = False
+        st.session_state.username = None
+    
+    # If already authenticated, show logout option in sidebar
+    if st.session_state.authenticated:
+        with st.sidebar:
+            st.success(f"✅ Logged in as: **{st.session_state.username}**")
+            if st.button("🚪 Logout", type="secondary"):
+                st.session_state.authenticated = False
+                st.session_state.username = None
+                # Clear any rate limiting data
+                if "user_requests" in st.session_state:
+                    del st.session_state.user_requests
+                st.success("👋 Logged out successfully!")
+                st.rerun()
+        return True
+    
+    # Show login form
+    st.markdown("### 🔐 Authentication Required")
+    st.info("Please log in to access the YMYL Audit Tool")
+    
+    # Try to get credentials from secrets
+    try:
+        username = st.secrets["auth"]["username"]
+        password = st.secrets["auth"]["password"]
+    except (KeyError, FileNotFoundError):
+        st.error("❌ **Configuration Error**: Authentication credentials not found in secrets.")
+        
+        with st.expander("🔧 Setup Instructions"):
+            st.markdown("""
+            **To set up authentication, you need to create a secrets file:**
+            
+            **For local development:**
+            1. Create a file `.streamlit/secrets.toml` in your project root
+            2. Add your credentials:
+            
+            ```toml
+            [auth]
+            username = "your_username"
+            password = "your_password"
+            ```
+            
+            **For Streamlit Cloud deployment:**
+            1. Go to your app settings
+            2. Click "Advanced settings" during deployment (or "Edit secrets" after deployment)
+            3. Paste the same content in the Secrets field:
+            
+            ```toml
+            [auth]
+            username = "your_username"
+            password = "your_password"
+            ```
+            
+            ⚠️ **Important**: Never commit the `secrets.toml` file to your repository!
+            """)
+        return False
+    
+    # Login form
+    with st.form("login_form", clear_on_submit=True):
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            input_username = st.text_input("👤 Username", placeholder="Enter your username")
+        
+        with col2:
+            input_password = st.text_input("🔑 Password", type="password", placeholder="Enter your password")
+        
+        login_button = st.form_submit_button("🚀 Login", type="primary", use_container_width=True)
+        
+        if login_button:
+            if not input_username or not input_password:
+                st.error("❌ Please enter both username and password")
+                return False
+            
+            # Check credentials
+            if input_username == username and input_password == password:
+                st.session_state.authenticated = True
+                st.session_state.username = input_username
+                st.success(f"✅ Welcome, {input_username}!")
+                time.sleep(0.5)  # Brief pause for user feedback
+                st.rerun()
+            else:
+                st.error("❌ Invalid username or password")
+                time.sleep(1)  # Simple brute force protection
+                return False
+    
+    return False
+
+def check_rate_limit():
+    """
+    Simple rate limiting to prevent API abuse.
+    Returns True if request is allowed, False if rate limited.
+    """
+    if "user_requests" not in st.session_state:
+        st.session_state.user_requests = []
+    
+    current_time = time.time()
+    hour_ago = current_time - 3600
+    
+    # Remove requests older than 1 hour
+    st.session_state.user_requests = [
+        req_time for req_time in st.session_state.user_requests 
+        if req_time > hour_ago
+    ]
+    
+    # Check if under limit (50 requests per hour)
+    max_requests = 50
+    current_count = len(st.session_state.user_requests)
+    
+    if current_count >= max_requests:
+        st.error(f"❌ **Rate Limit Exceeded**: You've made {current_count} requests in the last hour. Maximum allowed: {max_requests}")
+        st.info("Please wait before making more requests.")
+        return False
+    
+    # Add current request
+    st.session_state.user_requests.append(current_time)
+    
+    # Show usage in sidebar
+    with st.sidebar:
+        remaining = max_requests - (current_count + 1)
+        st.metric("📊 Requests Remaining", f"{remaining}/{max_requests}", help="Requests left this hour")
+    
+    return True
+
+# =============================================================================
+# ORIGINAL APPLICATION CODE (unchanged)
+# =============================================================================
 
 def clear_analysis_session_state():
     """
@@ -431,8 +574,16 @@ def main():
     """
     Main application function.
     
-    ENHANCED: Support for dual input mode (URL + Direct JSON)
+    ENHANCED: Support for dual input mode (URL + Direct JSON) with authentication
     """
+    # Check authentication first
+    if not check_authentication():
+        return  # Stop here if not authenticated
+    
+    # Check rate limiting
+    if not check_rate_limit():
+        return  # Stop here if rate limited
+    
     # Create page layout
     create_page_header()
     

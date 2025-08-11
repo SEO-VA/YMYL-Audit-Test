@@ -8,10 +8,13 @@ Orchestrates the complete AI analysis workflow including:
 - Progress tracking and error handling
 
 FIXED: Progress calculation bug - now uses actual completion count instead of chunk indices
+IMPROVED: Clean report generation using marker-based content extraction
 """
 
 import asyncio
 import time
+import json
+import re
 from datetime import datetime
 from typing import List, Dict, Any, Optional, Callable
 from ai.assistant_client import AssistantClient
@@ -173,86 +176,89 @@ class AnalysisEngine:
         
         return results
 
+    def _extract_clean_section_content(self, ai_response: str) -> Optional[str]:
+        """
+        Extract clean section content between SECTION markers.
+        
+        Args:
+            ai_response (str): Full AI response with markers
+            
+        Returns:
+            str: Clean section content or None if not found
+        """
+        start_marker = "<!-- SECTION_START -->"
+        end_marker = "<!-- SECTION_END -->"
+        
+        start_idx = ai_response.find(start_marker)
+        end_idx = ai_response.find(end_marker)
+        
+        if start_idx == -1 or end_idx == -1:
+            logger.warning("Could not find SECTION markers in AI response")
+            return None
+        
+        # Extract content between markers
+        clean_content = ai_response[start_idx + len(start_marker):end_idx].strip()
+        return clean_content
+
+    def _create_clean_error_section(self, chunk_index: Any) -> str:
+        """
+        Create clean error section that matches format.
+        
+        Args:
+            chunk_index: Index of failed chunk
+            
+        Returns:
+            str: Clean error section
+        """
+        return f"""## Section Analysis Failed (Chunk {chunk_index})
+❌ Technical Error
+
+Analysis could not be completed for this section.
+Manual review recommended."""
+
     def _create_final_report(self, analysis_results: List[Dict[str, Any]], chunks: List[Dict[str, Any]]) -> str:
         """
-        Create the final YMYL compliance report.
+        Create clean final report by assembling only clean section content.
         
         Args:
             analysis_results (list): Results from AI analysis
             chunks (list): Original chunk data
             
         Returns:
-            str: Final report in markdown format
+            str: Clean final report
         """
-        logger.info("Creating final compliance report")
+        logger.info("Creating final clean compliance report")
         
-        # Header
+        # Minimal header only
         audit_date = datetime.now().strftime("%Y-%m-%d")
-        successful_count = len([r for r in analysis_results if r.get("success")])
-        failed_count = len(analysis_results) - successful_count
+        header = f"# YMYL Compliance Audit Report\n\n"
         
-        header = f"""# YMYL Compliance Audit Report
-
-**Audit Date:** {audit_date}
-**Content Type:** Online Casino/Gambling  
-**Analysis Method:** Section-by-section E-E-A-T compliance review
-
----
-
-"""
-        
-        # Process successful analyses
-        report_parts = [header]
+        # Extract clean content from successful analyses
+        clean_sections = []
         
         for result in analysis_results:
             if result.get("success"):
-                report_parts.append(result["content"])
-                report_parts.append("\n---\n")
+                clean_content = self._extract_clean_section_content(result["content"])
+                if clean_content:
+                    clean_sections.append(clean_content)
+                else:
+                    # Handle malformed sections with clean error
+                    chunk_idx = result.get('chunk_index', 'Unknown')
+                    clean_sections.append(self._create_clean_error_section(chunk_idx))
             else:
-                # Add error section for failed analyses
+                # Handle failed analyses with clean error
                 chunk_idx = result.get('chunk_index', 'Unknown')
-                error_section = f"""
-## Analysis Error for Chunk {chunk_idx}
-
-❌ **Processing Failed**
-**Error:** {result.get('error', 'Unknown error')}
-**Chunk Index:** {chunk_idx}
-
-This section could not be analyzed due to technical issues. Manual review may be required.
-
----
-"""
-                report_parts.append(error_section)
+                clean_sections.append(self._create_clean_error_section(chunk_idx))
         
-        # Processing summary
-        total_sections = len(analysis_results)
-        processing_time = getattr(self, 'analysis_stats', {}).get('processing_time', 0)
+        # Assemble final report
+        if clean_sections:
+            report_parts = [header]
+            report_parts.extend(clean_sections)
+            final_report = "\n---\n\n".join(report_parts)
+        else:
+            final_report = f"{header}❌ No sections could be analyzed. All chunks failed processing."
         
-        summary = f"""
-## Processing Summary
-
-**✅ Sections Successfully Analyzed:** {successful_count}
-**❌ Sections with Analysis Errors:** {failed_count}  
-**📊 Total Sections:** {total_sections}
-**⏱️ Processing Time:** {processing_time:.2f} seconds
-**🔄 Analysis Method:** Parallel AI processing with OpenAI Assistant API
-
-### Performance Metrics
-- **Average Time per Section:** {(processing_time / total_sections):.2f}s
-- **Success Rate:** {(successful_count / total_sections * 100):.1f}%
-- **Parallel Efficiency:** {'High' if processing_time < total_sections * 2 else 'Moderate'}
-
----
-
-*Report generated by AI-powered YMYL compliance analysis system*
-*Assistant ID: {self.assistant_client.assistant_id}*
-"""
-        
-        report_parts.append(summary)
-        
-        final_report = ''.join(report_parts)
-        logger.info(f"Final report generated: {len(final_report):,} characters")
-        
+        logger.info(f"Final clean report generated: {len(final_report):,} characters")
         return final_report
 
     def _calculate_final_stats(self, analysis_results: List[Dict[str, Any]], processing_time: float) -> Dict[str, Any]:

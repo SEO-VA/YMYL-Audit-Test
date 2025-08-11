@@ -70,8 +70,6 @@ def check_authentication():
                 st.session_state.authenticated = False
                 st.session_state.username = None
                 # Clear any rate limiting data
-                if "user_requests" in st.session_state:
-                    del st.session_state.user_requests
                 st.success("👋 Logged out successfully!")
                 st.rerun()
         return True
@@ -147,41 +145,6 @@ def check_authentication():
     
     return False
 
-def check_rate_limit():
-    """
-    Simple rate limiting to prevent API abuse.
-    Returns True if request is allowed, False if rate limited.
-    """
-    if "user_requests" not in st.session_state:
-        st.session_state.user_requests = []
-    
-    current_time = time.time()
-    hour_ago = current_time - 3600
-    
-    # Remove requests older than 1 hour
-    st.session_state.user_requests = [
-        req_time for req_time in st.session_state.user_requests 
-        if req_time > hour_ago
-    ]
-    
-    # Check if under limit (50 requests per hour)
-    max_requests = 50
-    current_count = len(st.session_state.user_requests)
-    
-    if current_count >= max_requests:
-        st.error(f"❌ **Rate Limit Exceeded**: You've made {current_count} requests in the last hour. Maximum allowed: {max_requests}")
-        st.info("Please wait before making more requests.")
-        return False
-    
-    # Add current request
-    st.session_state.user_requests.append(current_time)
-    
-    # Show usage in sidebar
-    with st.sidebar:
-        remaining = max_requests - (current_count + 1)
-        st.metric("📊 Requests Remaining", f"{remaining}/{max_requests}", help="Requests left this hour")
-    
-    return True
 
 # =============================================================================
 # ENHANCED DATA HANDLING FOR UNICODE FIX
@@ -602,10 +565,6 @@ def main():
     # Check authentication first
     if not check_authentication():
         return  # Stop here if not authenticated
-    
-    # Check rate limiting
-    if not check_rate_limit():
-        return  # Stop here if rate limited
     
     # Create page layout
     create_page_header()

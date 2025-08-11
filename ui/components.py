@@ -399,28 +399,32 @@ def create_content_freshness_indicator(content_result: Dict, ai_result: Optional
             st.write(f"**Content Source**: {content_source}")
             st.write(f"**AI Analysis Source**: {ai_source}")
 
+#!/usr/bin/env python3
+"""
+Add this debug tab to your create_results_tabs function
+
+This will show exactly what data is being sent to the AI
+"""
+
 def create_results_tabs(result: Dict[str, Any], ai_result: Optional[Dict[str, Any]] = None):
     """
-    Create results display tabs.
+    Create results display tabs with DEBUG tab added
     
     ENHANCED: Shows appropriate context for URL vs Direct JSON inputs
-    
-    Args:
-        result (dict): Processing results
-        ai_result (dict): AI analysis results (optional)
     """
     # Show freshness indicator before tabs
     if ai_result and ai_result.get('success'):
         create_content_freshness_indicator(result, ai_result)
     
     if ai_result and ai_result.get('success'):
-        # With AI analysis results
-        tab1, tab2, tab3, tab4, tab5 = st.tabs([
+        # With AI analysis results - ADD DEBUG TAB
+        tab1, tab2, tab3, tab4, tab5, tab_debug = st.tabs([
             "🎯 AI Compliance Report", 
             "📊 Individual Analyses", 
             "🔧 JSON Output", 
             "📄 Source Content", 
-            "📈 Summary"
+            "📈 Summary",
+            "🐛 DEBUG: AI Data"  # NEW DEBUG TAB
         ])
         
         with tab1:
@@ -437,13 +441,17 @@ def create_results_tabs(result: Dict[str, Any], ai_result: Optional[Dict[str, An
         
         with tab5:
             _create_summary_tab(result, ai_result)
+        
+        with tab_debug:
+            _create_debug_ai_data_tab(result, ai_result)  # NEW DEBUG TAB
     
     else:
-        # Without AI analysis results
-        tab1, tab2, tab3 = st.tabs([
+        # Without AI analysis results - ADD DEBUG TAB
+        tab1, tab2, tab3, tab_debug = st.tabs([
             "🎯 JSON Output", 
             "📄 Source Content", 
-            "📈 Summary"
+            "📈 Summary",
+            "🐛 DEBUG: AI Data"  # NEW DEBUG TAB
         ])
         
         with tab1:
@@ -454,7 +462,203 @@ def create_results_tabs(result: Dict[str, Any], ai_result: Optional[Dict[str, An
         
         with tab3:
             _create_summary_tab(result)
+        
+        with tab_debug:
+            _create_debug_ai_data_tab(result, None)  # NEW DEBUG TAB
 
+
+def _create_debug_ai_data_tab(result: Dict[str, Any], ai_result: Optional[Dict[str, Any]] = None):
+    """
+    NEW: Debug tab showing exactly what data is sent to AI
+    """
+    st.subheader("🐛 Debug: AI Processing Data")
+    st.info("This tab shows exactly what data is being sent to the AI (which works correctly)")
+    
+    # Import here to avoid circular imports
+    try:
+        from utils.json_utils import extract_big_chunks, parse_json_output
+        import json
+    except ImportError as e:
+        st.error(f"Import error: {e}")
+        return
+    
+    st.markdown("---")
+    
+    # Show what data we have in result
+    st.markdown("### 📋 Available Data in Result")
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.write("**Result Keys:**")
+        result_keys = list(result.keys())
+        for key in result_keys:
+            value = result[key]
+            if isinstance(value, str) and len(value) > 100:
+                st.write(f"- `{key}`: {type(value).__name__} ({len(value):,} chars)")
+            else:
+                st.write(f"- `{key}`: {type(value).__name__}")
+    
+    with col2:
+        st.write("**Data Sources:**")
+        st.write(f"- Input Mode: {result.get('input_mode', 'unknown')}")
+        st.write(f"- URL: {result.get('url', 'N/A')}")
+        st.write(f"- Has raw JSON: {'json_output_raw' in result}")
+        st.write(f"- Has parsed JSON: {'json_output' in result}")
+    
+    st.markdown("---")
+    
+    # Show what gets sent to AI
+    st.markdown("### 🤖 Data Sent to AI (Working Path)")
+    
+    # Get the JSON data that would be sent to AI
+    json_for_ai = result.get('json_output')  # This is what gets sent to AI
+    
+    if json_for_ai:
+        try:
+            # Show the parsed JSON structure
+            if isinstance(json_for_ai, dict):
+                st.write(f"**Data Type**: Dictionary (parsed JSON)")
+                st.write(f"**Keys**: {list(json_for_ai.keys())}")
+                
+                # Extract chunks like the AI does
+                chunks = extract_big_chunks(json_for_ai)
+                st.write(f"**Extracted Chunks**: {len(chunks)}")
+                
+                st.markdown("#### 🔍 Individual Chunks (as AI receives them)")
+                
+                for i, chunk in enumerate(chunks[:3]):  # Show first 3 chunks
+                    with st.expander(f"Chunk {chunk['index']} - {chunk['count']} small chunks"):
+                        chunk_text = chunk['text']
+                        
+                        # Analysis of chunk content
+                        col_a, col_b, col_c = st.columns(3)
+                        with col_a:
+                            st.metric("Text Length", f"{len(chunk_text):,}")
+                        with col_b:
+                            st.metric("Unicode Escapes", chunk_text.count('\\u'))
+                        with col_c:
+                            unicode_free = chunk_text.count('\\u') == 0
+                            st.metric("Unicode Free", "✅ Yes" if unicode_free else "❌ No")
+                        
+                        # Show the actual text content
+                        st.markdown("**Text Content (first 500 chars):**")
+                        preview = chunk_text[:500] + "..." if len(chunk_text) > 500 else chunk_text
+                        st.code(preview, language='text')
+                        
+                        # Show if content has readable characters
+                        st.markdown("**Character Analysis:**")
+                        
+                        # Sample some characters
+                        sample_chars = chunk_text[:100]
+                        readable_chars = []
+                        unicode_chars = []
+                        
+                        i_char = 0
+                        while i_char < len(sample_chars):
+                            if sample_chars[i_char:i_char+2] == '\\u' and i_char + 5 < len(sample_chars):
+                                # Found unicode escape
+                                unicode_seq = sample_chars[i_char:i_char+6]
+                                try:
+                                    decoded_char = chr(int(unicode_seq[2:], 16))
+                                    unicode_chars.append(f"{unicode_seq} → {decoded_char}")
+                                except:
+                                    unicode_chars.append(f"{unicode_seq} → (invalid)")
+                                i_char += 6
+                            else:
+                                if sample_chars[i_char].isprintable():
+                                    readable_chars.append(sample_chars[i_char])
+                                i_char += 1
+                        
+                        if unicode_chars:
+                            st.write("**Unicode Sequences Found:**")
+                            for uc in unicode_chars[:5]:  # Show first 5
+                                st.write(f"  - {uc}")
+                            if len(unicode_chars) > 5:
+                                st.write(f"  - ... and {len(unicode_chars) - 5} more")
+                        
+                        if readable_chars:
+                            st.write(f"**Readable chars sample**: {''.join(readable_chars[:20])}")
+                
+                if len(chunks) > 3:
+                    st.write(f"... and {len(chunks) - 3} more chunks")
+            
+            elif isinstance(json_for_ai, str):
+                st.write(f"**Data Type**: String")
+                st.write(f"**Length**: {len(json_for_ai):,} characters")
+                st.write(f"**Unicode Escapes**: {json_for_ai.count('\\u')}")
+                
+                # Try to parse it
+                try:
+                    parsed = json.loads(json_for_ai)
+                    st.write("**Parsing**: ✅ Valid JSON")
+                    chunks = extract_big_chunks(parsed)
+                    st.write(f"**Chunks**: {len(chunks)}")
+                except Exception as e:
+                    st.write(f"**Parsing**: ❌ {str(e)}")
+                
+                # Show sample
+                st.markdown("**Content Sample (first 1000 chars):**")
+                st.code(json_for_ai[:1000], language='json')
+        
+        except Exception as e:
+            st.error(f"Error analyzing AI data: {e}")
+            st.write("**Raw data:**")
+            st.write(f"Type: {type(json_for_ai)}")
+            st.write(f"Content: {str(json_for_ai)[:500]}...")
+    
+    else:
+        st.warning("No JSON data found for AI processing")
+    
+    st.markdown("---")
+    
+    # Compare with UI display data
+    st.markdown("### 🖥️ Data for UI Display (Broken Path)")
+    
+    json_for_ui = result.get('json_output_raw')
+    
+    if json_for_ui:
+        st.write(f"**Data Type**: {type(json_for_ui).__name__}")
+        st.write(f"**Length**: {len(str(json_for_ui)):,} characters")
+        st.write(f"**Unicode Escapes**: {str(json_for_ui).count('\\u')}")
+        
+        st.markdown("**Content Sample (first 1000 chars):**")
+        st.code(str(json_for_ui)[:1000], language='json')
+        
+        # Compare with AI data
+        if json_for_ai and json_for_ui:
+            st.markdown("**🔄 Data Comparison:**")
+            if isinstance(json_for_ai, dict):
+                try:
+                    ai_as_string = json.dumps(json_for_ai, ensure_ascii=False)
+                    st.write(f"- AI data (as string): {len(ai_as_string):,} chars, {ai_as_string.count('\\u')} unicode")
+                    st.write(f"- UI data: {len(str(json_for_ui)):,} chars, {str(json_for_ui).count('\\u')} unicode")
+                    
+                    if ai_as_string == str(json_for_ui):
+                        st.success("✅ Data matches perfectly")
+                    else:
+                        st.warning("⚠️ Data differs between AI and UI paths")
+                except Exception as e:
+                    st.error(f"Comparison error: {e}")
+    else:
+        st.warning("No raw JSON data found for UI display")
+    
+    # Show AI results if available
+    if ai_result:
+        st.markdown("---")
+        st.markdown("### ✅ AI Processing Results")
+        st.write("**AI successfully processed the data above and produced readable output.**")
+        st.write(f"- Processing time: {ai_result.get('processing_time', 0):.2f}s")
+        st.write(f"- Chunks analyzed: {ai_result.get('statistics', {}).get('total_chunks', 0)}")
+        st.write(f"- Success rate: {ai_result.get('statistics', {}).get('success_rate', 0):.1f}%")
+        
+        # Show a sample of AI output to prove it's readable
+        if ai_result.get('report'):
+            st.markdown("**Sample AI Output (first 300 chars):**")
+            sample_output = ai_result['report'][:300] + "..." if len(ai_result['report']) > 300 else ai_result['report']
+            st.code(sample_output, language='markdown')
+            st.success("👆 This proves the AI received readable text (no Unicode escapes)")
+            
 def _create_ai_report_tab(ai_result: Dict[str, Any], content_result: Optional[Dict[str, Any]] = None):
     """
     Create AI compliance report tab content.

@@ -5,14 +5,12 @@ Chunk Processor for YMYL Audit Tool
 Handles automated interaction with chunk.dejan.ai to process content into chunks.
 Uses Selenium WebDriver for browser automation.
 
-FIXED: Added missing decode_unicode_escapes function
+FIXED: Removed duplicate decode function, imports from json_utils
 """
 
 import time
 import html
-import json  # Import json module for Unicode handling
 import platform
-import re  # Import re module for Unicode decoding
 from typing import Tuple, Optional, Callable
 from selenium import webdriver
 from selenium.webdriver.common.by import By
@@ -27,28 +25,9 @@ from config.settings import (
     MAX_CONTENT_LENGTH
 )
 from utils.logging_utils import setup_logger, format_processing_step
+from utils.json_utils import decode_unicode_escapes  # FIXED: Import from centralized location
 
 logger = setup_logger(__name__)
-
-
-def decode_unicode_escapes(text: str) -> str:
-    """
-    ADDED: Decode Unicode escape sequences in text to readable characters.
-    
-    Args:
-        text (str): Text with potential Unicode escapes
-        
-    Returns:
-        str: Text with decoded Unicode characters
-    """
-    try:
-        def decode_match(match):
-            unicode_code = match.group(1)
-            return chr(int(unicode_code, 16))
-        return re.sub(r'\\u([0-9a-fA-F]{4})', decode_match, text)
-    except Exception as e:
-        logger.warning(f"Unicode decoding failed: {e}")
-        return text
 
 
 class ChunkProcessor:
@@ -251,12 +230,12 @@ class ChunkProcessor:
 
     def _extract_json_from_button(self) -> Optional[str]:
         """
-        Extract JSON output from the copy button.
+        Extract JSON output from the copy button and decode Unicode escapes.
         
-        FIXED: Added Unicode decoding to make special characters readable
+        FIXED: Uses centralized Unicode decoding function
         
         Returns:
-            str or None: Extracted JSON content or None if failed
+            str or None: Extracted and decoded JSON content or None if failed
         """
         try:
             wait = WebDriverWait(self.driver, SELENIUM_SHORT_TIMEOUT)
@@ -292,25 +271,23 @@ class ChunkProcessor:
             self._log("Decoding HTML entities", "in_progress")
             decoded_content = html.unescape(final_content)
             
-            # FIXED: Decode Unicode escapes to make special characters readable
+            # FIXED: Use centralized Unicode decoding function
             self._log("Decoding Unicode escapes", "in_progress")
             decoded_content = decode_unicode_escapes(decoded_content)
-                        # In ChunkProcessor._extract_json_from_button, after the decoding line:
-            # decoded_content = decode_unicode_escapes(decoded_content)
-            # Add temporarily for debugging:
-            if '\\u' in decoded_content:
-                logger.warning("DEBUG: Still found \\u in decoded_content after decode_unicode_escapes!")
-                # Optionally log a sample
-                sample = decoded_content[:200]
-                logger.info(f"DEBUG Sample after decoding: {sample}")
-            else:
-                logger.info("DEBUG: No \\u found in decoded_content after decode_unicode_escapes - looks good!")
-
-            # Make sure the final return passes this decoded content:
-            # return decoded_content
+            
+            # Log decoding results for debugging
+            if '\\u' in final_content:
+                unicode_count = final_content.count('\\u')
+                remaining_count = decoded_content.count('\\u')
+                self._log(f"Unicode decoding: {unicode_count} sequences found, {remaining_count} remaining", "info")
+                
+                if remaining_count == 0:
+                    logger.info("Unicode decoding successful - all sequences converted")
+                else:
+                    logger.warning(f"Unicode decoding incomplete - {remaining_count} sequences remain")
             
             self._log(f"Extraction complete. Retrieved {len(decoded_content):,} characters", "success")
-            logger.info(f"Successfully extracted JSON: {len(decoded_content):,} characters")
+            logger.info(f"Successfully extracted and decoded JSON: {len(decoded_content):,} characters")
             
             return decoded_content
             
@@ -360,7 +337,7 @@ class ChunkProcessor:
             if not self._wait_for_results():
                 return False, None, "Chunking process timed out or failed"
             
-            # Step 4: Extract JSON
+            # Step 4: Extract and decode JSON
             json_output = self._extract_json_from_button()
             if not json_output:
                 return False, None, "Failed to extract JSON from results page"
@@ -419,16 +396,3 @@ class ChunkProcessor:
         self.cleanup()
         if exc_type is not None:
             logger.error(f"ChunkProcessor context manager exit due to exception: {exc_type.__name__}: {exc_val}")
-
-    def _decode_unicode_escapes(self, text: str) -> str:
-        """
-        ADDED: Decode Unicode escape sequences to make special characters readable.
-        This is an instance method wrapper for the module-level function.
-        
-        Args:
-            text (str): Text with potential Unicode escapes
-            
-        Returns:
-            str: Text with decoded Unicode characters
-        """
-        return decode_unicode_escapes(text)

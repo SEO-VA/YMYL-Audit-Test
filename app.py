@@ -7,6 +7,7 @@ This is the clean, refactored version with modular architecture.
 
 NEW FEATURE: Dual input mode - URL extraction OR direct JSON input
 SECURITY: Added simple authentication using Streamlit secrets
+FIXED: Proper Unicode handling and data flow for UI display
 """
 import re
 import asyncio
@@ -16,7 +17,7 @@ from collections import defaultdict
 from extractors.content_extractor import ContentExtractor
 from processors.chunk_processor import ChunkProcessor
 from ai.analysis_engine import AnalysisEngine
-from utils.json_utils import extract_big_chunks, parse_json_output
+from utils.json_utils import parse_json_output, decode_unicode_escapes  # FIXED: Import centralized function
 from ui.components import (
     create_page_header,
     create_sidebar_config,
@@ -44,17 +45,7 @@ st.set_page_config(
 # Setup logging
 logger = setup_logger(__name__)
 
-def decode_unicode_escapes(text: str) -> str:
-    """Decode Unicode escape sequences in text to readable characters."""
-    try:
-        import re
-        def decode_match(match):
-            unicode_code = match.group(1)
-            return chr(int(unicode_code, 16))
-        return re.sub(r'\\u([0-9a-fA-F]{4})', decode_match, text)
-    except Exception as e:
-        logger.warning(f"Unicode decoding failed: {e}")
-        return text
+# FIXED: Removed duplicate decode_unicode_escapes function - now using centralized version
 
 # =============================================================================
 # AUTHENTICATION SYSTEM
@@ -193,7 +184,7 @@ def check_rate_limit():
     return True
 
 # =============================================================================
-# ORIGINAL APPLICATION CODE (unchanged)
+# ENHANCED DATA HANDLING FOR UNICODE FIX
 # =============================================================================
 
 def clear_analysis_session_state():
@@ -242,22 +233,23 @@ def process_url_workflow(url: str, debug_mode: bool = False) -> dict:
     """
     Process URL through the complete extraction and chunking workflow.
     
-    ENHANCED: Updated to work with dual input system
+    FIXED: Proper data storage for Unicode display
     
     Args:
         url (str): URL to process
         debug_mode (bool): Whether to show detailed logs
         
     Returns:
-        dict: Processing results
+        dict: Processing results with both raw and parsed JSON
     """
     result = {
         'success': False,
         'url': url,
         'extracted_content': None,
-        'json_output': None,
+        'json_output_raw': None,      # FIXED: Store raw decoded JSON string
+        'json_output': None,          # FIXED: Store parsed JSON dict
         'error': None,
-        'input_mode': 'url',  # NEW: Track input mode
+        'input_mode': 'url',
         'processing_timestamp': st.session_state.get('processing_timestamp', None)
     }
     
@@ -269,7 +261,7 @@ def process_url_workflow(url: str, debug_mode: bool = False) -> dict:
         if current_url != url:
             cleared_count = clear_analysis_session_state()
             st.session_state['current_url_analysis'] = url
-            st.session_state['current_input_analysis_mode'] = 'url'  # NEW: Track mode
+            st.session_state['current_input_analysis_mode'] = 'url'
             st.session_state['processing_timestamp'] = st.session_state.get('processing_timestamp', 0) + 1
             
             if cleared_count > 0:
@@ -300,15 +292,18 @@ def process_url_workflow(url: str, debug_mode: bool = False) -> dict:
         with ChunkProcessor(log_callback=log_callback if debug_mode else None) as processor:
             if not debug_mode:
                 with st.status("You are not waiting, Chunk Norris is waiting for you"):
-                    success, json_output, error = processor.process_content(content)
+                    success, json_output_raw, error = processor.process_content(content)
             else:
-                success, json_output, error = processor.process_content(content)
+                success, json_output_raw, error = processor.process_content(content)
             
             if not success:
                 result['error'] = f"Chunk processing failed: {error}"
                 return result
             
-            result['json_output'] = parse_json_output(json_output)
+            # FIXED: Store both raw and parsed versions
+            result['json_output_raw'] = json_output_raw  # Raw decoded JSON string for UI
+            result['json_output'] = parse_json_output(json_output_raw)  # Parsed dict for AI
+            
             log_callback("🎉 URL workflow complete!")
         
         # Store processing timestamp and mode
@@ -327,6 +322,8 @@ def process_direct_json_workflow(json_content: str, debug_mode: bool = False) ->
     """
     NEW FEATURE: Process direct JSON input, skipping URL extraction and chunking.
     
+    FIXED: Proper Unicode decoding for direct JSON input
+    
     Args:
         json_content (str): Direct JSON input from user
         debug_mode (bool): Whether to show detailed logs
@@ -336,11 +333,12 @@ def process_direct_json_workflow(json_content: str, debug_mode: bool = False) ->
     """
     result = {
         'success': False,
-        'url': 'Direct JSON Input',  # Placeholder for compatibility
+        'url': 'Direct JSON Input',
         'extracted_content': 'Content provided directly as chunked JSON',
-        'json_output': decode_unicode_escapes(json_content),
+        'json_output_raw': None,      # FIXED: Store raw JSON string
+        'json_output': None,          # FIXED: Store parsed JSON dict
         'error': None,
-        'input_mode': 'direct_json',  # NEW: Track input mode
+        'input_mode': 'direct_json',
         'processing_timestamp': st.session_state.get('processing_timestamp', 0) + 1
     }
     
@@ -351,7 +349,7 @@ def process_direct_json_workflow(json_content: str, debug_mode: bool = False) ->
         current_mode = st.session_state.get('current_input_analysis_mode')
         if current_mode != 'direct_json':
             cleared_count = clear_analysis_session_state()
-            st.session_state['current_url_analysis'] = None  # Clear URL
+            st.session_state['current_url_analysis'] = None
             st.session_state['current_input_analysis_mode'] = 'direct_json'
             st.session_state['processing_timestamp'] = result['processing_timestamp']
             
@@ -366,16 +364,20 @@ def process_direct_json_workflow(json_content: str, debug_mode: bool = False) ->
             log_area, log_callback = create_simple_progress_tracker()
         
         # Basic validation
-        log_callback("📋 Validating JSON input...")
+        log_callback("📋 Validating and processing JSON input...")
         
         if not json_content.strip():
             result['error'] = "Please provide JSON content"
             return result
         
+        # FIXED: Apply Unicode decoding to direct input
+        log_callback("🔤 Decoding Unicode escapes in JSON content...")
+        decoded_json_content = decode_unicode_escapes(json_content)
+        
         # Try to parse JSON to check basic validity
         try:
             import json
-            parsed_json = json.loads(json_content)
+            parsed_json = json.loads(decoded_json_content)
             
             # Basic structure check
             if not isinstance(parsed_json, dict):
@@ -396,6 +398,10 @@ def process_direct_json_workflow(json_content: str, debug_mode: bool = False) ->
         except json.JSONDecodeError as e:
             result['error'] = f"Invalid JSON format: {str(e)}"
             return result
+        
+        # FIXED: Store both versions properly
+        result['json_output_raw'] = decoded_json_content  # Decoded string for UI display
+        result['json_output'] = parsed_json  # Parsed dict for AI processing
         
         log_callback("🎉 Direct JSON workflow complete!")
         
@@ -451,10 +457,10 @@ async def process_ai_analysis(json_output: str, api_key: str, source_result: dic
     """
     Process AI compliance analysis.
     
-    ENHANCED: Include source tracking for both URL and direct JSON inputs
+    FIXED: Use parsed JSON dict (not raw string) for AI processing
     
     Args:
-        json_output (str): JSON output from processing or direct input
+        json_output (str): Raw JSON string or parsed dict
         api_key (str): OpenAI API key
         source_result (dict): Source content processing result for validation
         
@@ -464,14 +470,16 @@ async def process_ai_analysis(json_output: str, api_key: str, source_result: dic
     try:
         logger.info("Starting AI analysis workflow")
         
-        # Parse JSON and extract chunks
-        json_data = parse_json_output(json_output)
+        # FIXED: Handle both string and dict inputs properly
+        if isinstance(json_output, str):
+            json_data = parse_json_output(json_output)
+        elif isinstance(json_output, dict):
+            json_data = json_output
+        else:
+            return {'success': False, 'error': 'Invalid JSON output format'}
+        
         if not json_data:
             return {'success': False, 'error': 'Failed to parse JSON content'}
-        
-        chunks = extract_big_chunks(json_data)
-        if not chunks:
-            return {'success': False, 'error': 'No chunks found in JSON data'}
         
         # Create progress tracking UI elements
         progress_container = st.container()
@@ -481,9 +489,9 @@ async def process_ai_analysis(json_output: str, api_key: str, source_result: dic
             source_display = source_result.get('url', 'Direct JSON Input') if source_result else 'Unknown'
             
             if input_mode == 'url':
-                st.info(f"🚀 Starting AI analysis of {len(chunks)} chunks extracted from URL")
+                st.info(f"🚀 Starting AI analysis of content extracted from URL")
             else:
-                st.info(f"🚀 Starting AI analysis of {len(chunks)} chunks from direct JSON input")
+                st.info(f"🚀 Starting AI analysis of direct JSON input")
             
             # Progress bar for overall progress
             progress_bar = st.progress(0.0)
@@ -511,9 +519,12 @@ async def process_ai_analysis(json_output: str, api_key: str, source_result: dic
             # Initialize analysis engine with progress callback
             analysis_engine = AnalysisEngine(api_key, progress_callback=update_ui_progress)
             
+            # FIXED: Pass the raw JSON string for processing, not dict
+            json_string_for_ai = source_result.get('json_output_raw') if source_result else json.dumps(json_data)
+            
             # Process with real-time updates
             logger.info("Starting parallel AI analysis...")
-            results = await analysis_engine.process_json_content(json_output)
+            results = await analysis_engine.process_json_content(json_string_for_ai)
             
             # Update final progress
             progress_bar.progress(1.0)
@@ -524,7 +535,7 @@ async def process_ai_analysis(json_output: str, api_key: str, source_result: dic
                 results['processing_timestamp'] = source_result.get('processing_timestamp', 0)
                 results['source_url'] = source_result.get('url', 'Direct JSON Input')
                 results['input_mode'] = source_result.get('input_mode', 'url')
-                results['content_hash'] = hash(json_output)  # Quick content verification
+                results['content_hash'] = hash(json_string_for_ai)  # Quick content verification
             
             # Show final statistics
             if results['success']:
@@ -654,16 +665,19 @@ def main():
         st.markdown("---")
         st.subheader("📊 Results")
         
+        # FIXED: Pass the parsed JSON dict for AI analysis
+        json_for_ai = result['json_output']  # This is the parsed dict
+        
         # AI Analysis button and processing
-        if create_ai_analysis_section(api_key, result['json_output'], result):
+        if create_ai_analysis_section(api_key, json_for_ai, result):
             if not api_key:
                 display_error_message("OpenAI API key is required for AI analysis")
             else:
                 try:
-                    # Pass source result for tracking and validation
+                    # Pass the parsed JSON dict for processing
                     with st.spinner("🤖 Initializing AI analysis..."):
                         ai_results = asyncio.run(process_ai_analysis(
-                            result['json_output'], 
+                            json_for_ai, 
                             api_key, 
                             source_result=result
                         ))

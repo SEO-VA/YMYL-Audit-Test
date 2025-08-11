@@ -4,16 +4,44 @@ JSON processing utilities for YMYL Audit Tool
 
 Helper functions for parsing and manipulating JSON data.
 
-FIXED: Enhanced with content validation and tracking for stale results prevention
+FIXED: Unicode decoding centralized and properly handled for UI display
 """
 
 import json
 import hashlib
+import re
 from datetime import datetime
-from typing import List, Dict, Any, Optional, Tuple
+from typing import List, Dict, Any, Optional, Tuple, Union
 from utils.logging_utils import setup_logger
 
 logger = setup_logger(__name__)
+
+
+def decode_unicode_escapes(text: str) -> str:
+    """
+    CENTRALIZED: Decode Unicode escape sequences in text to readable characters.
+    This is the single source of truth for Unicode decoding.
+    
+    Args:
+        text (str): Text with potential Unicode escapes
+        
+    Returns:
+        str: Text with decoded Unicode characters
+    """
+    try:
+        def decode_match(match):
+            unicode_code = match.group(1)
+            return chr(int(unicode_code, 16))
+        decoded = re.sub(r'\\u([0-9a-fA-F]{4})', decode_match, text)
+        
+        # Log if decoding actually changed something
+        if decoded != text:
+            logger.debug(f"Unicode decoding applied: found {text.count('\\u')} escape sequences")
+        
+        return decoded
+    except Exception as e:
+        logger.warning(f"Unicode decoding failed: {e}")
+        return text
 
 
 def extract_big_chunks(json_data: Dict[str, Any]) -> List[Dict[str, Any]]:
@@ -36,7 +64,7 @@ def extract_big_chunks(json_data: Dict[str, Any]) -> List[Dict[str, Any]]:
             chunk_index = chunk.get('big_chunk_index', len(chunks) + 1)
             small_chunks = chunk.get('small_chunks', [])
             
-            # Join small chunks with newlines
+            # Join small chunks with newlines - text should already be decoded
             joined_text = '\n'.join(small_chunks)
             
             # FIXED: Add content validation and metadata
@@ -88,7 +116,7 @@ def parse_json_output(json_string: str) -> Optional[Dict[str, Any]]:
                 'parsed_at': datetime.now().isoformat(),
                 'content_hash': _generate_content_hash(json_string),
                 'content_length': len(json_string),
-                'parser_version': '1.1.0'
+                'parser_version': '1.2.0'
             }
         
         logger.info(f"Successfully parsed JSON ({len(json_string):,} characters)")
@@ -100,6 +128,94 @@ def parse_json_output(json_string: str) -> Optional[Dict[str, Any]]:
     except Exception as e:
         logger.error(f"Unexpected error parsing JSON: {e}")
         return None
+
+
+def format_json_for_display(json_data: Union[Dict[str, Any], str], max_length: int = 1000) -> str:
+    """
+    Format JSON data for display with proper Unicode handling.
+    
+    FIXED: Handles both dict and string inputs, ensures Unicode is readable
+    
+    Args:
+        json_data: JSON data to format (dict or string)
+        max_length (int): Maximum length of formatted string
+        
+    Returns:
+        str: Formatted JSON string with readable Unicode characters
+    """
+    try:
+        # Handle different input types
+        if isinstance(json_data, dict):
+            # Create display version without internal metadata
+            display_data = _create_display_version(json_data)
+            formatted = json.dumps(display_data, indent=2, ensure_ascii=False)
+        elif isinstance(json_data, str):
+            # If it's already a string, try to parse and reformat for consistency
+            try:
+                parsed = json.loads(json_data)
+                display_data = _create_display_version(parsed) if isinstance(parsed, dict) else parsed
+                formatted = json.dumps(display_data, indent=2, ensure_ascii=False)
+            except json.JSONDecodeError:
+                # If parsing fails, treat as plain text
+                formatted = json_data
+        else:
+            # Fallback to string representation
+            formatted = str(json_data)
+        
+        # Apply truncation if needed
+        if len(formatted) > max_length:
+            truncated = formatted[:max_length]
+            # Try to end at a complete line
+            last_newline = truncated.rfind('\n')
+            if last_newline > max_length * 0.8:  # If we're close to the end
+                truncated = truncated[:last_newline]
+            
+            truncated += f"\n... (truncated, full length: {len(formatted):,} characters)"
+            return truncated
+        
+        return formatted
+        
+    except Exception as e:
+        logger.error(f"Error formatting JSON for display: {e}")
+        return f"Error formatting JSON: {str(e)}"
+
+
+def get_display_json_string(json_data: Union[Dict[str, Any], str]) -> str:
+    """
+    NEW: Get a clean JSON string for UI display with proper Unicode handling.
+    This is the main function components should use for displaying JSON.
+    
+    Args:
+        json_data: JSON data (dict or string)
+        
+    Returns:
+        str: Clean, readable JSON string
+    """
+    try:
+        if isinstance(json_data, dict):
+            # Convert dict to formatted JSON string
+            display_data = _create_display_version(json_data)
+            return json.dumps(display_data, indent=2, ensure_ascii=False)
+        elif isinstance(json_data, str):
+            # If it's a string, ensure it's properly formatted JSON
+            try:
+                # Try to parse and reformat for consistency
+                parsed = json.loads(json_data)
+                if isinstance(parsed, dict):
+                    display_data = _create_display_version(parsed)
+                    return json.dumps(display_data, indent=2, ensure_ascii=False)
+                else:
+                    return json.dumps(parsed, indent=2, ensure_ascii=False)
+            except json.JSONDecodeError:
+                # If it's not valid JSON, return as-is (might be plain text)
+                return json_data
+        else:
+            # Convert other types to JSON
+            return json.dumps(json_data, indent=2, ensure_ascii=False)
+            
+    except Exception as e:
+        logger.error(f"Error creating display JSON string: {e}")
+        return str(json_data)
 
 
 def validate_chunk_structure(json_data: Dict[str, Any]) -> bool:
@@ -256,42 +372,6 @@ def get_chunk_statistics(json_data: Dict[str, Any]) -> Dict[str, Any]:
         }
 
 
-def format_json_for_display(json_data: Dict[str, Any], max_length: int = 1000) -> str:
-    """
-    Format JSON data for display with truncation if needed.
-    
-    FIXED: Enhanced formatting with metadata preservation
-    
-    Args:
-        json_data (dict): JSON data to format
-        max_length (int): Maximum length of formatted string
-        
-    Returns:
-        str: Formatted JSON string
-    """
-    try:
-        # FIXED: Create display version without internal metadata
-        display_data = _create_display_version(json_data)
-        
-        formatted = json.dumps(display_data, indent=2, ensure_ascii=False)
-        
-        if len(formatted) > max_length:
-            truncated = formatted[:max_length]
-            # Try to end at a complete line
-            last_newline = truncated.rfind('\n')
-            if last_newline > max_length * 0.8:  # If we're close to the end
-                truncated = truncated[:last_newline]
-            
-            truncated += f"\n... (truncated, full length: {len(formatted):,} characters)"
-            return truncated
-        
-        return formatted
-        
-    except Exception as e:
-        logger.error(f"Error formatting JSON for display: {e}")
-        return f"Error formatting JSON: {str(e)}"
-
-
 def compare_json_content(json1: str, json2: str) -> Dict[str, Any]:
     """
     Compare two JSON content strings for differences.
@@ -392,7 +472,12 @@ def validate_content_freshness(content_data: Dict[str, Any], ai_result: Dict[str
         ai_content_hash = ai_result.get('content_hash')
         
         if content_json and ai_content_hash:
-            current_hash = _generate_content_hash(content_json)
+            if isinstance(content_json, dict):
+                # Convert back to string for hashing
+                json_string = json.dumps(content_json, sort_keys=True)
+                current_hash = _generate_content_hash(json_string)
+            else:
+                current_hash = _generate_content_hash(str(content_json))
             validation['content_match'] = (current_hash == ai_content_hash)
         else:
             validation['content_match'] = True  # Assume match if no hash data
@@ -496,11 +581,13 @@ def get_content_summary(json_data: Dict[str, Any]) -> Dict[str, Any]:
 
 # FIXED: Enhanced exports for better module interface
 __all__ = [
+    'decode_unicode_escapes',
     'extract_big_chunks',
     'parse_json_output',
+    'format_json_for_display',
+    'get_display_json_string',  # NEW: Main function for UI display
     'validate_chunk_structure',
     'get_chunk_statistics',
-    'format_json_for_display',
     'compare_json_content',
     'validate_content_freshness',
     'get_content_summary'

@@ -4,8 +4,7 @@ UI Components for YMYL Audit Tool
 
 Reusable Streamlit UI components for the application interface.
 
-FIXED: Unicode decoding in JSON tab to show readable special characters
-
+FIXED: Proper Unicode handling in JSON display - no more encoding issues!
 NEW FEATURE: Dual input mode - URL extraction OR direct JSON input
 """
 
@@ -16,28 +15,10 @@ from datetime import datetime
 from typing import Dict, Any, Optional, List, Callable, Tuple
 from config.settings import DEFAULT_TIMEZONE
 from utils.logging_utils import log_with_timestamp
+from utils.json_utils import get_display_json_string  # FIXED: Import centralized display function
 from exporters.export_manager import ExportManager
 
-def decode_unicode_escapes(text: str) -> str:
-    """
-    Decode Unicode escape sequences in text to readable characters.
-    
-    ADDED: Unicode decoding function for JSON display
-    
-    Args:
-        text (str): Text with potential Unicode escapes
-        
-    Returns:
-        str: Text with decoded Unicode characters
-    """
-    try:
-        def decode_match(match):
-            unicode_code = match.group(1)
-            return chr(int(unicode_code, 16))
-        return re.sub(r'\\u([0-9a-fA-F]{4})', decode_match, text)
-    except Exception:
-        # If decoding fails, return original text
-        return text
+# FIXED: Removed duplicate decode_unicode_escapes - now using centralized version from json_utils
 
 def create_page_header():
     """Create the main page header with title and description."""
@@ -292,7 +273,7 @@ def create_simple_progress_tracker() -> tuple[Any, Callable[[str], None]]:
     
     return log_area, update_progress
 
-def create_ai_analysis_section(api_key: Optional[str], json_output: str, source_result: Optional[Dict] = None) -> bool:
+def create_ai_analysis_section(api_key: Optional[str], json_output: Any, source_result: Optional[Dict] = None) -> bool:
     """
     Create AI analysis section with processing button.
     
@@ -300,7 +281,7 @@ def create_ai_analysis_section(api_key: Optional[str], json_output: str, source_
     
     Args:
         api_key (str): OpenAI API key
-        json_output (str): JSON output from chunk processing or direct input
+        json_output: JSON output from chunk processing or direct input (dict or string)
         source_result (dict): Source processing result for validation
         
     Returns:
@@ -317,8 +298,13 @@ def create_ai_analysis_section(api_key: Optional[str], json_output: str, source_
     # Show analysis readiness status
     if json_output:
         try:
-            import json
-            data = json.loads(json_output)
+            # Handle both dict and string inputs
+            if isinstance(json_output, dict):
+                data = json_output
+            else:
+                import json
+                data = json.loads(json_output)
+            
             chunk_count = len(data.get('big_chunks', []))
             
             col1, col2 = st.columns([2, 1])
@@ -371,7 +357,7 @@ def create_ai_analysis_section(api_key: Optional[str], json_output: str, source_
                     key="ai_analysis_button"
                 )
                 
-        except json.JSONDecodeError:
+        except (json.JSONDecodeError, TypeError) as e:
             st.error("❌ Invalid JSON output - cannot proceed with AI analysis")
             return False
     else:
@@ -664,17 +650,12 @@ def _create_individual_analyses_tab(ai_result: Dict[str, Any]):
                 st.error(f"Error: {detail.get('error', 'Unknown error')}")
 
 def _create_json_tab(result: Dict[str, Any]):
-    """Create JSON output tab content with decoded Unicode."""
+    """
+    Create JSON output tab content with proper Unicode display.
+    
+    FIXED: Now properly displays Unicode characters using centralized function
+    """
     st.subheader("🔧 JSON Output")
-
-    json_output = result.get('json_output', '{}')
-    
-    # --- FIX: Decode Unicode escapes for display ---
-    decoded_json_output = decode_unicode_escapes(json_output)
-    
-    # Basic validation
-    has_unicode_escapes_initially = '\\u' in json_output
-    is_decoded_different = json_output != decoded_json_output
 
     # Display source info
     input_mode = st.session_state.get('input_mode', '🌐 URL Input')
@@ -684,33 +665,50 @@ def _create_json_tab(result: Dict[str, Any]):
     else:
         st.info("**Source**: Direct JSON Input")
 
+    # FIXED: Use the proper raw JSON string with Unicode already decoded
+    json_output_raw = result.get('json_output_raw')
+    json_output_dict = result.get('json_output')
+    
+    if json_output_raw:
+        # We have the raw decoded string - perfect for display
+        display_json = json_output_raw
+    elif json_output_dict:
+        # Fallback: convert dict back to pretty JSON string
+        display_json = get_display_json_string(json_output_dict)
+    else:
+        # Last resort: try old format
+        display_json = get_display_json_string(result.get('json_output', '{}'))
+
     # Display content
-    json_output = decode_unicode_escapes(json_output) # <--- ADD THIS LINE
     st.markdown("**Processed JSON Content:**")
-    st.code(json_output, language='json') # <--- THIS LINE (unchanged)
+    st.code(display_json, language='json')
 
     # Download button
-    json_output = decode_unicode_escapes(json_output) # <--- ADD THIS LINE (again, just to be safe, though the one above should be enough)
     st.download_button(
         label="💾 Download JSON",
-        data=json_output, # <--- AND THIS LINE (unchanged)
+        data=display_json,
         file_name="processed_chunks.json",
         mime="application/json",
         key="download_json"
     )
 
-    # --- Optional: Show decoding info ---
-    if has_unicode_escapes_initially or is_decoded_different:
-        with st.expander("🔍 Decoding Info"):
-            st.caption("The JSON below has been decoded for proper display in the UI and download.")
-            if has_unicode_escapes_initially:
-                st.markdown("- **Original content contained `\\uXXXX` escape sequences.**")
-            if is_decoded_different:
-                st.markdown("- **Display content differs from raw input due to decoding.**")
-            # Show sample of decoded content
-            st.markdown("**Content after UI decoding (sample):**")
-            st.code(decoded_json_output[:500] if decoded_json_output else '(empty)', language='json')
-
+    # Show content info
+    if display_json:
+        char_count = len(display_json)
+        unicode_count = display_json.count('\\u')
+        
+        with st.expander("🔍 Content Info"):
+            st.write(f"**Content Length**: {char_count:,} characters")
+            st.write(f"**Unicode Escapes Found**: {unicode_count}")
+            
+            if unicode_count == 0:
+                st.success("✅ All Unicode characters properly decoded and readable")
+            else:
+                st.warning(f"⚠️ {unicode_count} Unicode escape sequences still present")
+            
+            # Show sample of content for debugging
+            sample = display_json[:200] + "..." if len(display_json) > 200 else display_json
+            st.code(sample, language='json')
 
 def _create_content_tab(result: Dict[str, Any]):
     """
@@ -734,17 +732,19 @@ def _create_content_tab(result: Dict[str, Any]):
         
         # Show some basic stats about the direct input
         try:
-            import json
-            data = json.loads(result['json_output'])
-            chunks = data.get('big_chunks', [])
-            total_content = sum(len('\n'.join(chunk.get('small_chunks', []))) for chunk in chunks)
-            
-            col1, col2 = st.columns(2)
-            with col1:
-                st.metric("Total Chunks Provided", len(chunks))
-            with col2:
-                st.metric("Total Content Length", f"{total_content:,} chars")
+            json_output_dict = result.get('json_output', {})
+            if isinstance(json_output_dict, dict):
+                chunks = json_output_dict.get('big_chunks', [])
+                total_content = 0
+                for chunk in chunks:
+                    small_chunks = chunk.get('small_chunks', [])
+                    total_content += len('\n'.join(small_chunks))
                 
+                col1, col2 = st.columns(2)
+                with col1:
+                    st.metric("Total Chunks Provided", len(chunks))
+                with col2:
+                    st.metric("Total Content Length", f"{total_content:,} chars")
         except:
             st.warning("Could not analyze the provided JSON structure.")
 
@@ -760,9 +760,17 @@ def _create_summary_tab(result: Dict[str, Any], ai_result: Optional[Dict[str, An
     
     # Parse JSON for chunk statistics
     try:
-        import json
-        json_data = json.loads(result['json_output'])
-        big_chunks = json_data.get('big_chunks', [])
+        json_output_dict = result.get('json_output', {})
+        if isinstance(json_output_dict, dict):
+            big_chunks = json_output_dict.get('big_chunks', [])
+        else:
+            import json
+            if isinstance(json_output_dict, str):
+                parsed_data = json.loads(json_output_dict)
+                big_chunks = parsed_data.get('big_chunks', [])
+            else:
+                big_chunks = []
+        
         total_small_chunks = sum(len(chunk.get('small_chunks', [])) for chunk in big_chunks)
         
         # Content processing metrics

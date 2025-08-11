@@ -306,17 +306,17 @@ class AnalysisEngine:
                 content = result.get("content", "")
                 cleaned_content = self._clean_ai_response(content)
                 
-                # Add clear section separator
+                # Add simple section separator
                 if i > 0:  # Don't add separator before first section
-                    sections.append("\n" + "="*80 + "\n")
+                    sections.append("---\n")
                 
                 sections.append(cleaned_content)
             else:
                 # Handle failed analyses cleanly
                 chunk_idx = result.get('chunk_index', 'Unknown')
                 if i > 0:
-                    sections.append("\n" + "="*80 + "\n")
-                sections.append(f"# ⚠️ Analysis Error - Section {chunk_idx}")
+                    sections.append("---\n")
+                sections.append(f"## ⚠️ Analysis Error - Section {chunk_idx}")
                 sections.append(f"**Status:** Processing failed")
                 sections.append(f"**Error:** {result.get('error', 'Unknown error')}")
                 sections.append("**Action:** Manual review required")
@@ -359,33 +359,52 @@ class AnalysisEngine:
         """Clean up AI response for better readability."""
         lines = content.split('\n')
         cleaned_lines = []
+        skip_until_issue = False
         
         for line in lines:
             # Skip empty lines at start
             if not cleaned_lines and not line.strip():
                 continue
             
-            # Remove language detection and translation introductions
+            # Remove ALL language detection and translation content
             if any(phrase in line.lower() for phrase in [
-                "language detection", "english translation of problematic", 
-                "言語検出", "英語翻訳", "language detection:", "english translation:"
+                "language detection", "english translation", "the content is in",
+                "言語検出", "英語翻訳", "original text", "translation", 
+                "english translations:", "audit:"
             ]):
+                skip_until_issue = True
+                continue
+            
+            # Stop skipping when we hit an actual issue
+            if skip_until_issue and ("🔴" in line or "🟠" in line or "🟡" in line or "🔵" in line):
+                skip_until_issue = False
+            
+            # Skip lines while in translation/detection mode
+            if skip_until_issue:
                 continue
             
             # Remove summary sections at the end
             if any(phrase in line.lower() for phrase in [
                 "summary:", "✅ no other issues", "the content is generally",
-                "however, it requires improvements", "summary:"
+                "however, it requires improvements", "audit:", "english translation of the entire section"
             ]):
                 break
             
-            # Make section headers more prominent - convert single # to ##
-            if line.startswith('#') and not line.startswith('##'):
-                line = '#' + line
+            # Clean up section headers - remove brackets and make prominent
+            if line.startswith('[') and line.endswith(']'):
+                section_name = line.strip('[]')
+                line = f"## {section_name}"
             
-            # Add issue separators - convert --- to visual separator
-            if line.strip() == "---":
-                line = "\n" + "-" * 60 + "\n"
+            # Convert existing headers
+            elif line.startswith('#') and not line.startswith('##'):
+                if not line.startswith('# 🎯'):  # Keep main report header
+                    line = '##' + line[1:]
+            
+            # Clean up separators
+            if "=" * 10 in line:  # Long separator lines
+                line = "---"
+            elif "-" * 50 in line:  # Medium separator lines  
+                line = "---"
             
             cleaned_lines.append(line)
         

@@ -4,12 +4,15 @@ Chunk Processor for YMYL Audit Tool
 
 Handles automated interaction with chunk.dejan.ai to process content into chunks.
 Uses Selenium WebDriver for browser automation.
+
+FIXED: Added missing decode_unicode_escapes function
 """
 
 import time
 import html
-import json  # ADDED: Import json module for Unicode handling
+import json  # Import json module for Unicode handling
 import platform
+import re  # Import re module for Unicode decoding
 from typing import Tuple, Optional, Callable
 from selenium import webdriver
 from selenium.webdriver.common.by import By
@@ -26,6 +29,26 @@ from config.settings import (
 from utils.logging_utils import setup_logger, format_processing_step
 
 logger = setup_logger(__name__)
+
+
+def decode_unicode_escapes(text: str) -> str:
+    """
+    ADDED: Decode Unicode escape sequences in text to readable characters.
+    
+    Args:
+        text (str): Text with potential Unicode escapes
+        
+    Returns:
+        str: Text with decoded Unicode characters
+    """
+    try:
+        def decode_match(match):
+            unicode_code = match.group(1)
+            return chr(int(unicode_code, 16))
+        return re.sub(r'\\u([0-9a-fA-F]{4})', decode_match, text)
+    except Exception as e:
+        logger.warning(f"Unicode decoding failed: {e}")
+        return text
 
 
 class ChunkProcessor:
@@ -230,6 +253,8 @@ class ChunkProcessor:
         """
         Extract JSON output from the copy button.
         
+        FIXED: Added Unicode decoding to make special characters readable
+        
         Returns:
             str or None: Extracted JSON content or None if failed
         """
@@ -267,8 +292,9 @@ class ChunkProcessor:
             self._log("Decoding HTML entities", "in_progress")
             decoded_content = html.unescape(final_content)
             
-            # NEW: Decode Unicode escapes to make special characters readable
-            decoded_content = self._decode_unicode_escapes(decoded_content)
+            # FIXED: Decode Unicode escapes to make special characters readable
+            self._log("Decoding Unicode escapes", "in_progress")
+            decoded_content = decode_unicode_escapes(decoded_content)
             
             self._log(f"Extraction complete. Retrieved {len(decoded_content):,} characters", "success")
             logger.info(f"Successfully extracted JSON: {len(decoded_content):,} characters")
@@ -380,3 +406,16 @@ class ChunkProcessor:
         self.cleanup()
         if exc_type is not None:
             logger.error(f"ChunkProcessor context manager exit due to exception: {exc_type.__name__}: {exc_val}")
+
+    def _decode_unicode_escapes(self, text: str) -> str:
+        """
+        ADDED: Decode Unicode escape sequences to make special characters readable.
+        This is an instance method wrapper for the module-level function.
+        
+        Args:
+            text (str): Text with potential Unicode escapes
+            
+        Returns:
+            str: Text with decoded Unicode characters
+        """
+        return decode_unicode_escapes(text)

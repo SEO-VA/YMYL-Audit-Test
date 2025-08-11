@@ -4,16 +4,40 @@ UI Components for YMYL Audit Tool
 
 Reusable Streamlit UI components for the application interface.
 
+FIXED: Unicode decoding in JSON tab to show readable special characters
+
 NEW FEATURE: Dual input mode - URL extraction OR direct JSON input
 """
 
 import streamlit as st
 import time
+import re
 from datetime import datetime
 from typing import Dict, Any, Optional, List, Callable, Tuple
 from config.settings import DEFAULT_TIMEZONE
 from utils.logging_utils import log_with_timestamp
 from exporters.export_manager import ExportManager
+
+def decode_unicode_escapes(text: str) -> str:
+    """
+    Decode Unicode escape sequences in text to readable characters.
+    
+    ADDED: Unicode decoding function for JSON display
+    
+    Args:
+        text (str): Text with potential Unicode escapes
+        
+    Returns:
+        str: Text with decoded Unicode characters
+    """
+    try:
+        def decode_match(match):
+            unicode_code = match.group(1)
+            return chr(int(unicode_code, 16))
+        return re.sub(r'\\u([0-9a-fA-F]{4})', decode_match, text)
+    except Exception:
+        # If decoding fails, return original text
+        return text
 
 def create_page_header():
     """Create the main page header with title and description."""
@@ -589,12 +613,10 @@ def _create_download_buttons(formats: Dict[str, bytes]):
                     except Exception as e:
                         # If individual download button fails, show error but continue
                         st.error(f"Error creating {fmt.upper()} download: {str(e)[:50]}...")
-                        logger.warning(f"Download button error for {fmt}: {e}")
         
     except Exception as e:
         # If entire download section fails, provide fallback
         st.error("Error creating download buttons. Please try refreshing the page.")
-        logger.error(f"Download buttons creation failed: {e}")
         
         # Provide simple fallback download for markdown
         if 'markdown' in formats:
@@ -642,14 +664,49 @@ def _create_individual_analyses_tab(ai_result: Dict[str, Any]):
                 st.error(f"Error: {detail.get('error', 'Unknown error')}")
 
 def _create_json_tab(result: Dict[str, Any]):
-    """Create JSON output tab content."""
-    st.code(result['json_output'], language='json')
-    st.download_button(
-        label="💾 Download JSON",
-        data=result['json_output'],
-        file_name=f"chunks_{int(time.time())}.json",
-        mime="application/json"
-    )
+    """
+    Create JSON output tab content.
+    
+    FIXED: Apply Unicode decoding to make special characters readable
+    """
+    # Get the JSON output and decode Unicode escapes
+    json_output = result.get('json_output', '{}')
+    
+    # Apply Unicode decoding to make special characters readable
+    decoded_json = decode_unicode_escapes(json_output)
+    
+    # Show both the decoded version and provide option to see raw version
+    st.markdown("### 🔧 Processed JSON Output")
+    st.markdown("**Readable format with decoded special characters:**")
+    
+    # Display decoded JSON
+    st.code(decoded_json, language='json')
+    
+    # Download button for decoded version
+    col1, col2 = st.columns(2)
+    with col1:
+        st.download_button(
+            label="💾 Download Readable JSON",
+            data=decoded_json,
+            file_name=f"chunks_readable_{int(time.time())}.json",
+            mime="application/json",
+            help="Download JSON with readable special characters"
+        )
+    
+    with col2:
+        # Option to download raw version
+        st.download_button(
+            label="💾 Download Raw JSON",
+            data=json_output,
+            file_name=f"chunks_raw_{int(time.time())}.json",
+            mime="application/json",
+            help="Download original JSON with Unicode escapes"
+        )
+    
+    # Show raw version in an expander for debugging
+    with st.expander("🔍 View Raw JSON (with Unicode escapes)"):
+        st.code(json_output, language='json')
+        st.caption("This shows the original JSON format with Unicode escape sequences like \\u0027")
 
 def _create_content_tab(result: Dict[str, Any]):
     """
@@ -775,7 +832,7 @@ def create_ai_processing_interface(json_output: str, api_key: str, chunks: List[
     log_container = st.container()
     
     with log_container:
-        st.info(f"🚀 Starting parallel analysis of {len(chunks)} chunks...")
+        st.info(f"🚀 Starting AI analysis of {len(chunks)} chunks...")
         st.write("**Configuration:**")
         col1, col2 = st.columns(2)
         with col1:

@@ -664,95 +664,52 @@ def _create_individual_analyses_tab(ai_result: Dict[str, Any]):
                 st.error(f"Error: {detail.get('error', 'Unknown error')}")
 
 def _create_json_tab(result: Dict[str, Any]):
-    """
-    Create JSON output tab content.
-    FIXED: Apply Unicode decoding to make special characters readable and ensure
-    the decoded version is displayed.
-    """
-    json_output = parse_json_output(json_output)
+    """Create JSON output tab content with decoded Unicode."""
+    st.subheader("🔧 JSON Output")
 
-    st.markdown("### 🔧 Processed JSON Output")
-
-    # Always attempt decoding in the UI for consistency and to ensure
-    # the displayed content is as readable as possible.
-    # This handles cases where ChunkProcessor might have partially failed
-    # or where direct JSON input might contain escapes.
-    decoded_json = decode_unicode_escapes(json_output) # UI's decoding attempt
+    json_output = result.get('json_output', '{}')
+    
+    # --- FIX: Decode Unicode escapes for display ---
+    decoded_json_output = decode_unicode_escapes(json_output)
+    
+    # Basic validation
     has_unicode_escapes_initially = '\\u' in json_output
+    is_decoded_different = json_output != decoded_json_output
 
-    # Provide feedback
-    if has_unicode_escapes_initially:
-        st.info("🔤 Unicode escape sequences detected.")
-        if decoded_json != json_output:
-            st.success("✅ Successfully decoded Unicode characters for display.")
-        else:
-            # This means either ChunkProcessor already decoded it,
-            # or our UI decoding didn't change it (maybe it was already fully decoded
-            # or our decoder didn't catch something).
-            # Still, we display the result of our attempt (decoded_json).
-            st.info("ℹ️ Unicode decoding attempted. Displaying potentially decoded content.")
+    # Display source info
+    input_mode = st.session_state.get('input_mode', '🌐 URL Input')
+    if input_mode == "🌐 URL Input":
+        source_info = result.get('url', 'Unknown URL')
+        st.info(f"**Source**: {source_info}")
     else:
-        st.info("✅ No \\u escape sequences found in the source.")
+        st.info("**Source**: Direct JSON Input")
 
-    st.markdown("**JSON Content (Processed):**")
-    # CRITICAL: Always display the result of the UI's decoding attempt (decoded_json)
-    st.code(decoded_json, language='json')
+    # Display content with decoding fix applied
+    st.markdown("**Processed JSON Content:**")
+    
+    # Use the decoded version for display and download
+    st.code(decoded_json_output, language='json') 
 
-    # Download buttons (use decoded_json for the main download)
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        st.download_button(
-            label="💾 Download JSON",
-            data=decoded_json, # <-- Use decoded version
-            file_name=f"chunks_{int(time.time())}.json",
-            mime="application/json",
-            help="Download processed JSON content (Unicode decoded)"
-        )
-    with col2:
-        # Offer raw download only if the source had escapes AND decoding resulted in a change
-        if has_unicode_escapes_initially and decoded_json != json_output:
-            st.download_button(
-                label="💾 Download Raw JSON",
-                data=json_output, # <-- Offer original if it was different
-                file_name=f"chunks_raw_{int(time.time())}.json",
-                mime="application/json",
-                help="Download original JSON with Unicode escapes"
-            )
-        else:
-             # Optionally disable or hide this button if not applicable
-             # Or provide a message
-             st.button("💾 Download Raw JSON", disabled=True, help="No raw version available or no difference detected.")
-    with col3:
-        # Pretty-print option (using the decoded version)
-        try:
-            import json
-            parsed = json.loads(decoded_json) # <-- Parse the decoded version
-            pretty_json = json.dumps(parsed, indent=2, ensure_ascii=False)
-            st.download_button(
-                label="💾 Download Pretty JSON",
-                data=pretty_json,
-                file_name=f"chunks_pretty_{int(time.time())}.json",
-                mime="application/json",
-                help="Download formatted JSON with proper indentation (Unicode decoded)"
-            )
-        except Exception as e:
-            st.warning(f"Could not generate pretty JSON: {e}")
+    # Download button for the decoded JSON
+    st.download_button(
+        label="💾 Download Decoded JSON",
+        data=decoded_json_output, # <-- Use decoded content
+        file_name="processed_chunks_decoded.json",
+        mime="application/json",
+        key="download_decoded_json"
+    )
 
-    # Debug section (Keep this mostly the same, but show the final decoded result)
-    with st.expander("🔍 Debug Information"):
-        st.write(f"**Original length**: {len(json_output):,} characters")
-        st.write(f"**Processed (Decoded) length**: {len(decoded_json):,} characters")
-        st.write(f"**\\u sequences found initially**: {'Yes' if has_unicode_escapes_initially else 'No'}")
-        st.write(f"**Content changed after UI decoding attempt**: {'Yes' if decoded_json != json_output else 'No'}")
-        # Show a sample of the raw content
-        st.markdown("**Raw content sample (first 500 characters):**")
-        st.code(json_output[:500] if json_output else '(empty)', language='text')
-        if has_unicode_escapes_initially and decoded_json != json_output:
-            st.markdown("**Decoded content sample (first 500 characters):**")
-            st.code(decoded_json[:500] if decoded_json else '(empty)', language='text')
-        elif has_unicode_escapes_initially: # Show decoded sample even if no change, for clarity
-             st.markdown("**Content after UI decoding attempt (sample):**")
-             st.code(decoded_json[:500] if decoded_json else '(empty)', language='text')
+    # --- Optional: Show decoding info ---
+    if has_unicode_escapes_initially or is_decoded_different:
+        with st.expander("🔍 Decoding Info"):
+            st.caption("The JSON below has been decoded for proper display in the UI and download.")
+            if has_unicode_escapes_initially:
+                st.markdown("- **Original content contained `\\uXXXX` escape sequences.**")
+            if is_decoded_different:
+                st.markdown("- **Display content differs from raw input due to decoding.**")
+            # Show sample of decoded content
+            st.markdown("**Content after UI decoding (sample):**")
+            st.code(decoded_json_output[:500] if decoded_json_output else '(empty)', language='json')
 
 
 def _create_content_tab(result: Dict[str, Any]):

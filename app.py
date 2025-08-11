@@ -308,7 +308,7 @@ def process_url_workflow(url: str, debug_mode: bool = False) -> dict:
                 result['error'] = f"Chunk processing failed: {error}"
                 return result
             
-            result['json_output'] = decode_unicode_escapes(json_output)
+            result['json_output'] = parse_json_output(json_output)
             log_callback("🎉 URL workflow complete!")
         
         # Store processing timestamp and mode

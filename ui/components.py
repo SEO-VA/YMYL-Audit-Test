@@ -399,16 +399,9 @@ def create_content_freshness_indicator(content_result: Dict, ai_result: Optional
             st.write(f"**Content Source**: {content_source}")
             st.write(f"**AI Analysis Source**: {ai_source}")
 
-#!/usr/bin/env python3
-"""
-Add this debug tab to your create_results_tabs function
-
-This will show exactly what data is being sent to the AI
-"""
-
 def create_results_tabs(result: Dict[str, Any], ai_result: Optional[Dict[str, Any]] = None):
     """
-    Create results display tabs with DEBUG tab added
+    Create results display tabs WITH DEBUG TAB
     
     ENHANCED: Shows appropriate context for URL vs Direct JSON inputs
     """
@@ -417,7 +410,7 @@ def create_results_tabs(result: Dict[str, Any], ai_result: Optional[Dict[str, An
         create_content_freshness_indicator(result, ai_result)
     
     if ai_result and ai_result.get('success'):
-        # With AI analysis results - ADD DEBUG TAB
+        # With AI analysis results - INCLUDES DEBUG TAB
         tab1, tab2, tab3, tab4, tab5, tab_debug = st.tabs([
             "🎯 AI Compliance Report", 
             "📊 Individual Analyses", 
@@ -446,7 +439,7 @@ def create_results_tabs(result: Dict[str, Any], ai_result: Optional[Dict[str, An
             _create_debug_ai_data_tab(result, ai_result)  # NEW DEBUG TAB
     
     else:
-        # Without AI analysis results - ADD DEBUG TAB
+        # Without AI analysis results - ALSO HAS DEBUG TAB
         tab1, tab2, tab3, tab_debug = st.tabs([
             "🎯 JSON Output", 
             "📄 Source Content", 
@@ -465,7 +458,6 @@ def create_results_tabs(result: Dict[str, Any], ai_result: Optional[Dict[str, An
         
         with tab_debug:
             _create_debug_ai_data_tab(result, None)  # NEW DEBUG TAB
-
 
 def _create_debug_ai_data_tab(result: Dict[str, Any], ai_result: Optional[Dict[str, Any]] = None):
     """
@@ -657,8 +649,8 @@ def _create_debug_ai_data_tab(result: Dict[str, Any], ai_result: Optional[Dict[s
             st.markdown("**Sample AI Output (first 300 chars):**")
             sample_output = ai_result['report'][:300] + "..." if len(ai_result['report']) > 300 else ai_result['report']
             st.code(sample_output, language='markdown')
-            st.success("👆 This proves the AI received readable text (no Unicode escapes)")
-            
+            st.success("👆 This proves the AI received readable text (no Unicode escapes)")            
+
 def _create_ai_report_tab(ai_result: Dict[str, Any], content_result: Optional[Dict[str, Any]] = None):
     """
     Create AI compliance report tab content.

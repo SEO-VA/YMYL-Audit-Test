@@ -672,41 +672,83 @@ def _create_json_tab(result: Dict[str, Any]):
     # Get the JSON output and decode Unicode escapes
     json_output = result.get('json_output', '{}')
     
-    # Apply Unicode decoding to make special characters readable
-    decoded_json = decode_unicode_escapes(json_output)
-    
-    # Show both the decoded version and provide option to see raw version
+    # Debug info to see what we're working with
     st.markdown("### 🔧 Processed JSON Output")
-    st.markdown("**Readable format with decoded special characters:**")
     
-    # Display decoded JSON
+    # Check if JSON contains Unicode escapes
+    has_unicode_escapes = '\\u' in json_output
+    
+    if has_unicode_escapes:
+        st.info("🔤 Unicode escape sequences detected - applying decoding for readability")
+        # Apply Unicode decoding to make special characters readable
+        decoded_json = decode_unicode_escapes(json_output)
+        
+        # Show if decoding actually changed anything
+        if decoded_json != json_output:
+            st.success("✅ Successfully decoded Unicode characters")
+        else:
+            st.warning("⚠️ Unicode decoding didn't change the content")
+    else:
+        st.info("✅ No Unicode escape sequences detected")
+        decoded_json = json_output
+    
+    st.markdown("**JSON Content:**")
+    
+    # Display the processed JSON
     st.code(decoded_json, language='json')
     
-    # Download button for decoded version
-    col1, col2 = st.columns(2)
+    # Download buttons
+    col1, col2, col3 = st.columns(3)
+    
     with col1:
         st.download_button(
-            label="💾 Download Readable JSON",
+            label="💾 Download JSON",
             data=decoded_json,
-            file_name=f"chunks_readable_{int(time.time())}.json",
+            file_name=f"chunks_{int(time.time())}.json",
             mime="application/json",
-            help="Download JSON with readable special characters"
+            help="Download processed JSON content"
         )
     
     with col2:
-        # Option to download raw version
-        st.download_button(
-            label="💾 Download Raw JSON",
-            data=json_output,
-            file_name=f"chunks_raw_{int(time.time())}.json",
-            mime="application/json",
-            help="Download original JSON with Unicode escapes"
-        )
+        if has_unicode_escapes and decoded_json != json_output:
+            st.download_button(
+                label="💾 Download Raw JSON",
+                data=json_output,
+                file_name=f"chunks_raw_{int(time.time())}.json",
+                mime="application/json",
+                help="Download original JSON with Unicode escapes"
+            )
     
-    # Show raw version in an expander for debugging
-    with st.expander("🔍 View Raw JSON (with Unicode escapes)"):
-        st.code(json_output, language='json')
-        st.caption("This shows the original JSON format with Unicode escape sequences like \\u0027")
+    with col3:
+        # Pretty-print option
+        try:
+            import json
+            parsed = json.loads(decoded_json)
+            pretty_json = json.dumps(parsed, indent=2, ensure_ascii=False)
+            st.download_button(
+                label="💾 Download Pretty JSON",
+                data=pretty_json,
+                file_name=f"chunks_pretty_{int(time.time())}.json",
+                mime="application/json",
+                help="Download formatted JSON with proper indentation"
+            )
+        except:
+            pass
+    
+    # Debug section
+    with st.expander("🔍 Debug Information"):
+        st.write(f"**Original length**: {len(json_output):,} characters")
+        st.write(f"**Processed length**: {len(decoded_json):,} characters")
+        st.write(f"**Contains \\\\u sequences**: {'Yes' if has_unicode_escapes else 'No'}")
+        st.write(f"**Content changed after decoding**: {'Yes' if decoded_json != json_output else 'No'}")
+        
+        # Show a sample of the raw content
+        st.markdown("**Raw content sample (first 500 characters):**")
+        st.code(json_output[:500], language='text')
+        
+        if has_unicode_escapes and decoded_json != json_output:
+            st.markdown("**Decoded content sample (first 500 characters):**")
+            st.code(decoded_json[:500], language='text')
 
 def _create_content_tab(result: Dict[str, Any]):
     """

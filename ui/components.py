@@ -6,6 +6,7 @@ Reusable Streamlit UI components for the application interface.
 
 FIXED: Proper Unicode handling in JSON display - no more encoding issues!
 NEW FEATURE: Dual input mode - URL extraction OR direct JSON input
+DEBUG: Added debug tab to diagnose Unicode decoding issues
 """
 
 import streamlit as st
@@ -649,7 +650,7 @@ def _create_debug_ai_data_tab(result: Dict[str, Any], ai_result: Optional[Dict[s
             st.markdown("**Sample AI Output (first 300 chars):**")
             sample_output = ai_result['report'][:300] + "..." if len(ai_result['report']) > 300 else ai_result['report']
             st.code(sample_output, language='markdown')
-            st.success("👆 This proves the AI received readable text (no Unicode escapes)")            
+            st.success("👆 This proves the AI received readable text (no Unicode escapes)")
 
 def _create_ai_report_tab(ai_result: Dict[str, Any], content_result: Optional[Dict[str, Any]] = None):
     """

@@ -1099,22 +1099,6 @@ def create_info_panel(title: str, content: str, icon: str = "ℹ️"):
     """Create an information panel."""
     st.info(f"{icon} **{title}**: {content}")
 
-# NEW FEATURE: Helper functions for dual input mode
-def show_input_mode_context():
-    """Show current input mode context information."""
-    input_mode = st.session_state.get('input_mode', '🌐 URL Input')
-    current_url = st.session_state.get('current_url_analysis')
-    current_input_mode = st.session_state.get('current_input_analysis_mode')
-    if input_mode == "🌐 URL Input" and current_url:
-        with st.expander("📋 Current Analysis Context"):
-            st.write(f"**Input Mode**: URL Extraction")
-            st.write(f"**URL**: {current_url}")
-            st.write(f"**Timestamp**: {st.session_state.get('processing_timestamp', 'Unknown')}")
-    elif input_mode == "📄 Direct JSON" and current_input_mode == 'direct_json':
-        with st.expander("📋 Current Analysis Context"):
-            st.write(f"**Input Mode**: Direct JSON Input")
-            st.write(f"**Source**: User-provided chunked content")
-            st.write(f"**Timestamp**: {st.session_state.get('processing_timestamp', 'Unknown')}")
 
 def get_input_mode_display_name(mode: str) -> str:
     """Convert internal input mode to display name."""

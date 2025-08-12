@@ -229,10 +229,6 @@ def create_dual_input_section() -> Tuple[str, str, bool]:
 
 def _create_url_input_mode() -> Tuple[str, str, bool]:
     """Create URL input interface."""
-    # Show current analysis context if available
-    current_url = st.session_state.get('current_url_analysis')
-    if current_url:
-        st.info(f"📋 **Currently analyzing**: {current_url}")
         # Check if we have AI results for this URL
         ai_result = st.session_state.get('ai_analysis_result')
         if ai_result and ai_result.get('success'):

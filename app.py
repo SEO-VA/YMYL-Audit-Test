@@ -588,15 +588,15 @@ async def process_ai_analysis(json_output: str, api_key: str, source_result: dic
                 processing_time = results.get('processing_time', 0)
                 
                 ## with status_container.container():
-                 ##    col1, col2, col3, col4 = st.columns(4)
-                 ##    with col1:
-                 ##        st.metric("Total Chunks", stats.get('total_chunks', 0))
-                 ##    with col2:
-                 ##        st.metric("Successful", stats.get('successful_analyses', 0))
-                 ##    with col3:
-                 ##        st.metric("Failed", stats.get('failed_analyses', 0))
-                 ##    with col4:
-                 ##       st.metric("Success Rate", f"{stats.get('success_rate', 0):.1f}%")
+                ##     col1, col2, col3, col4 = st.columns(4)
+                ##     with col1:
+                ##         st.metric("Total Chunks", stats.get('total_chunks', 0))
+                ##     with col2:
+                ##         st.metric("Successful", stats.get('successful_analyses', 0))
+                ##     with col3:
+                ##         st.metric("Failed", stats.get('failed_analyses', 0))
+                ##     with col4:
+                ##         st.metric("Success Rate", f"{stats.get('success_rate', 0):.1f}%")
                     
                     if input_mode == 'url':
                         st.success(f"✅ AI analysis completed for URL content in {processing_time:.2f} seconds")

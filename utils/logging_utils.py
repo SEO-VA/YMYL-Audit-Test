@@ -103,6 +103,138 @@ def format_processing_step(step_name: str, status: str = "in_progress", details:
     
     return message
 
+def format_user_message(technical_message: str, context: str = "") -> str:
+    """
+    Convert technical messages to user-friendly ones.
+    
+    Args:
+        technical_message (str): Original technical message
+        context (str): Additional context about what's happening
+        
+    Returns:
+        str: User-friendly version of the message
+    """
+    # Common technical terms and their user-friendly replacements
+    replacements = {
+        'chunk processor': 'content processor',
+        'chunk processing': 'content processing',
+        'unicode escapes': 'special characters',
+        'selenium timeout': 'website loading timeout',
+        'webdriver': 'browser automation',
+        'json parsing': 'data format reading',
+        'http error': 'website connection issue',
+        'api key': 'access credentials',
+        'processing workflow': 'analysis process',
+        'extraction failed': 'could not get content',
+        'validation error': 'format check failed'
+    }
+    
+    # Convert to lowercase for matching
+    user_message = technical_message.lower()
+    
+    # Apply replacements
+    for technical_term, friendly_term in replacements.items():
+        user_message = user_message.replace(technical_term, friendly_term)
+    
+    # Add context if provided
+    if context:
+        user_message = f"{context}: {user_message}"
+    
+    # Capitalize first letter
+    user_message = user_message[0].upper() + user_message[1:] if user_message else ""
+    
+    return user_message
+
+def create_simple_progress_message(step_name: str, current: int = None, total: int = None) -> str:
+    """
+    Create simple progress messages for normal users.
+    
+    Args:
+        step_name (str): Name of the current step
+        current (int): Current item number (optional)
+        total (int): Total items (optional)
+        
+    Returns:
+        str: Simple progress message
+    """
+    # Simplify step names
+    simple_steps = {
+        'content_extraction': 'Getting content from website',
+        'chunk_processing': 'Processing content',
+        'ai_analysis': 'Running AI analysis',
+        'json_parsing': 'Reading data format',
+        'unicode_decoding': 'Processing text',
+        'validation': 'Checking format',
+        'export_generation': 'Creating reports'
+    }
+    
+    # Get simplified name or use original
+    simple_name = simple_steps.get(step_name.lower(), step_name)
+    
+    # Add progress if provided
+    if current is not None and total is not None and total > 0:
+        percentage = (current / total) * 100
+        return f"{simple_name} ({current}/{total} - {percentage:.0f}%)"
+    else:
+        return simple_name
+
+def categorize_error_for_user(error_message: str, error_type: str = "") -> dict:
+    """
+    Categorize errors and provide user-friendly information.
+    
+    Args:
+        error_message (str): Original error message
+        error_type (str): Type of error if known
+        
+    Returns:
+        dict: Error information with user-friendly details
+    """
+    error_info = {
+        'category': 'general',
+        'user_message': 'Something went wrong',
+        'suggestion': 'Please try again',
+        'technical_details': error_message
+    }
+    
+    # Analyze the error message to categorize it
+    error_lower = error_message.lower()
+    
+    if any(term in error_lower for term in ['timeout', 'timed out', 'time out']):
+        error_info.update({
+            'category': 'timeout',
+            'user_message': 'The website took too long to respond',
+            'suggestion': 'Try again, or check if the website is working in your browser'
+        })
+    
+    elif any(term in error_lower for term in ['connection', 'network', 'dns', 'resolve']):
+        error_info.update({
+            'category': 'connection',
+            'user_message': 'Could not connect to the website',
+            'suggestion': 'Check your internet connection and verify the URL is correct'
+        })
+    
+    elif any(term in error_lower for term in ['json', 'parse', 'format', 'invalid']):
+        error_info.update({
+            'category': 'format',
+            'user_message': 'There is an issue with the data format',
+            'suggestion': 'Check that your JSON follows the correct format'
+        })
+    
+    elif any(term in error_lower for term in ['api', 'key', 'authentication', 'unauthorized']):
+        error_info.update({
+            'category': 'api',
+            'user_message': 'Issue with AI analysis service access',
+            'suggestion': 'Check your API key or try again in a moment'
+        })
+    
+    elif any(term in error_lower for term in ['memory', 'large', 'size', 'limit']):
+        error_info.update({
+            'category': 'size',
+            'user_message': 'The content is too large to process',
+            'suggestion': 'Try with a smaller webpage or reduce your JSON content'
+        })
+    
+    return error_info        
 
 def format_metrics(metrics_dict: Dict[str, Any]) -> str:
     """
@@ -276,5 +408,8 @@ __all__ = [
     'safe_log_exception',
     'get_logger',
     'format_timestamp',
+    'format_user_message',              # NEW
+    'create_simple_progress_message',   # NEW  
+    'categorize_error_for_user',        # NEW
     'logger'
 ]

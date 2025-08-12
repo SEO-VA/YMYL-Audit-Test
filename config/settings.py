@@ -133,6 +133,15 @@ UI_SETTINGS = {
     
     # Enable advanced debug options
     'ENABLE_DEBUG_OPTIONS': True
+    
+    # Enable advanced debug options
+    'ENABLE_DEBUG_OPTIONS': True,
+
+    # NEW: User-friendly logging settings
+    'SIMPLE_PROGRESS_MODE': True,
+    'SHOW_TECHNICAL_LOGS': False,
+    'MAX_USER_FRIENDLY_MESSAGES': 5,
+    'CONSOLIDATE_STATUS_MESSAGES': True
 }
 
 # Error Handling Configuration

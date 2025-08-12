@@ -25,6 +25,140 @@ def create_page_header():
     st.markdown("**Automatically extract content from websites, generate JSON chunks, and perform YMYL compliance analysis**")
     st.markdown("---")
 
+def create_user_friendly_log_recap():
+    """Create a consolidated, user-friendly log recap for normal users."""
+    
+    # Check if we have any processing history in session state
+    log_entries = []
+    
+    # Collect URL processing logs
+    if 'latest_result' in st.session_state:
+        result = st.session_state['latest_result']
+        if result.get('success'):
+            input_mode = result.get('input_mode', 'url')
+            if input_mode == 'url':
+                log_entries.append({
+                    'step': 'Content Extraction',
+                    'status': 'completed',
+                    'details': f"Successfully extracted content from {result.get('url', 'URL')}",
+                    'data': f"{len(result.get('extracted_content', '')):,} characters extracted"
+                })
+            else:
+                log_entries.append({
+                    'step': 'JSON Input Processing', 
+                    'status': 'completed',
+                    'details': "Direct JSON content validated and processed",
+                    'data': "Content ready for analysis"
+                })
+    
+    # Collect AI analysis logs
+    if 'ai_analysis_result' in st.session_state:
+        ai_result = st.session_state['ai_analysis_result']
+        if ai_result.get('success'):
+            stats = ai_result.get('statistics', {})
+            processing_time = ai_result.get('processing_time', 0)
+            log_entries.append({
+                'step': 'AI Compliance Analysis',
+                'status': 'completed', 
+                'details': f"Analyzed {stats.get('total_chunks', 0)} content sections",
+                'data': f"Completed in {processing_time:.1f} seconds with {stats.get('success_rate', 0):.0f}% success rate"
+            })
+    
+    # Display the recap
+    if log_entries:
+        st.subheader("📋 Processing Summary")
+        st.info("Here's what happened during your analysis:")
+        
+        for i, entry in enumerate(log_entries, 1):
+            status_icon = "✅" if entry['status'] == 'completed' else "⏳"
+            
+            with st.expander(f"{status_icon} Step {i}: {entry['step']}", expanded=True):
+                st.write(f"**What happened:** {entry['details']}")
+                st.write(f"**Result:** {entry['data']}")
+                
+                # Add helpful next steps
+                if entry['step'] == 'Content Extraction':
+                    st.caption("💡 Next: Run AI analysis to check for YMYL compliance issues")
+                elif entry['step'] == 'AI Compliance Analysis':
+                    st.caption("💡 View your report in the 'AI Compliance Report' tab above")
+    else:
+        st.info("🚀 Ready to start! Choose your input method above and begin processing.")
+
+def track_user_error(error_type, error_message, context=""):
+    """Track errors for user-friendly display later."""
+    if 'user_error_history' not in st.session_state:
+        st.session_state['user_error_history'] = []
+    
+    error_entry = {
+        'timestamp': datetime.now().strftime('%H:%M:%S'),
+        'type': error_type,
+        'message': error_message,
+        'context': context,
+        'user_friendly': _make_error_user_friendly(error_type, error_message)
+    }
+    
+    st.session_state['user_error_history'].append(error_entry)
+    
+    # Keep only last 5 errors
+    if len(st.session_state['user_error_history']) > 5:
+        st.session_state['user_error_history'].pop(0)
+
+def _make_error_user_friendly(error_type, error_message):
+    """Convert technical errors to user-friendly messages."""
+    friendly_messages = {
+        'timeout': "The website took too long to respond. Try again or check if the URL is working.",
+        'connection': "Couldn't connect to the website. Check your internet connection and the URL.",
+        'json': "The content format isn't quite right. Please check your JSON input.",
+        'api': "There was an issue with the AI analysis service. Please try again in a moment.",
+        'parsing': "Had trouble understanding the content format. Please verify your input.",
+    }
+    
+    # Try to match error type
+    for key, friendly_msg in friendly_messages.items():
+        if key in error_type.lower() or key in error_message.lower():
+            return friendly_msg
+    
+    # Default friendly message
+    return "Something went wrong, but you can try again. If the problem continues, the issue might be temporary."            
+
+def create_simple_status_updater():
+    """Create a simple status updater that shows one clear message at a time."""
+    
+    if 'simple_status_container' not in st.session_state:
+        st.session_state['simple_status_container'] = st.empty()
+    
+    def update_simple_status(message, status_type="info"):
+        """Update the simple status display."""
+        container = st.session_state['simple_status_container']
+        
+        if status_type == "info":
+            container.info(f"🔄 {message}")
+        elif status_type == "success":
+            container.success(f"✅ {message}")
+        elif status_type == "error":
+            container.error(f"❌ {message}")
+        elif status_type == "warning":
+            container.warning(f"⚠️ {message}")
+    
+    return update_simple_status
+
+def show_error_recovery_suggestions(error_history):
+    """Show helpful suggestions based on recent errors."""
+    
+    if not error_history:
+        return
+        
+    recent_errors = [e['type'] for e in error_history[-3:]]
+    
+    if 'timeout' in ' '.join(recent_errors).lower():
+        st.info("💡 **Tip**: If you're getting timeout errors, try a different URL or check if the website is working in your browser first.")
+    
+    elif 'json' in ' '.join(recent_errors).lower():
+        st.info("💡 **Tip**: For JSON input, make sure it follows this format: {\"big_chunks\": [{\"big_chunk_index\": 1, \"small_chunks\": [\"your content here\"]}]}")
+    
+    elif 'api' in ' '.join(recent_errors).lower():
+        st.info("💡 **Tip**: AI analysis issues are usually temporary. Wait a moment and try again, or check if your API key is correct.")    
+
 def create_sidebar_config(debug_mode_default: bool = True) -> Dict[str, Any]:
     """
     Create sidebar configuration section.
@@ -78,7 +212,7 @@ def create_sidebar_config(debug_mode_default: bool = True) -> Dict[str, Any]:
     }
 
 def create_how_it_works_section():
-    """Create the 'How it works' information section."""
+    """Create the 'How it works' information section with user guidance."""
     st.subheader("ℹ️ How it works")
     st.markdown("""
 1. **Choose Input**: Extract from URL OR provide chunked JSON directly.
@@ -86,6 +220,24 @@ def create_how_it_works_section():
 3. **YMYL Analysis**: AI-powered YMYL audit of the content.
 4. **Export**: Generate professional reports in multiple formats.
 """)
+    
+    # Add user-friendly guidance
+    with st.expander("📚 New User Guide"):
+        st.markdown("""
+**First time using this tool?**
+
+- **For websites**: Just paste any URL and click "Process URL"
+- **For JSON data**: Switch to "Direct JSON" mode and paste your content
+- **Having issues?** Check the "Processing Summary" section for what went wrong
+- **Need help?** Turn on "Debug Mode" in the sidebar for detailed technical information
+
+**What you'll see:**
+- Simple status messages during processing
+- A summary of what happened at the end
+- Clear error messages if something go wrong
+- Professional reports you can download
+""")
+    
     st.info("💡 **New**: Choose between URL extraction or direct JSON input!")
 
 def create_dual_input_section() -> Tuple[str, str, bool]:
@@ -991,6 +1143,13 @@ def _create_content_tab(result: Dict[str, Any]):
             st.warning("Could not analyze the provided JSON structure.")
 
 def _create_summary_tab(result: Dict[str, Any], ai_result: Optional[Dict[str, Any]] = None):
+
+# Add the new user-friendly recap at the top
+create_user_friendly_log_recap()
+
+st.markdown("---")
+st.subheader("Technical Details")    
+
     """
     Create processing summary tab content.
     
@@ -1113,8 +1272,25 @@ def create_ai_processing_interface(json_output: str, api_key: str, chunks: List[
     }
 
 def display_error_message(error: str, error_type: str = "Error"):
-    """Display formatted error message."""
-    st.error(f"**{error_type}**: {error}")
+    """Display formatted error message and track for recap."""
+    
+    # Track the error
+    track_user_error(error_type, error)
+    
+    # Show user-friendly version
+    if 'user_error_history' in st.session_state and st.session_state['user_error_history']:
+        latest_error = st.session_state['user_error_history'][-1]
+        user_friendly_msg = latest_error['user_friendly']
+        
+        st.error(f"**{error_type}**: {user_friendly_msg}")
+        
+        # Show technical details in expander for advanced users
+        with st.expander("🔧 Technical Details (for troubleshooting)"):
+            st.code(f"Original error: {error}")
+            st.caption(f"Time: {latest_error['timestamp']}")
+    else:
+        # Fallback to original behavior
+        st.error(f"**{error_type}**: {error}")
 
 def display_success_message(message: str):
     """Display formatted success message."""

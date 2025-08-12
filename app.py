@@ -612,31 +612,6 @@ async def process_ai_analysis(json_output: str, api_key: str, source_result: dic
         logger.error(error_msg)
         return {'success': False, 'error': error_msg}
 
-def display_analysis_status_info():
-    """
-    Display information about current analysis status.
-    
-    ENHANCED: Show status for both URL and direct JSON inputs
-    """
-    input_mode = st.session_state.get('input_mode', '🌐 URL Input')
-    
-    if input_mode == "🌐 URL Input":
-        current_url = st.session_state.get('current_url_analysis')
-        if current_url:
-            st.info(f"📋 **Current Analysis Context**: {current_url}")
-    else:
-        current_mode = st.session_state.get('current_input_analysis_mode')
-        if current_mode == 'direct_json':
-            st.info(f"📋 **Current Analysis Context**: Direct JSON Input")
-    
-    # Check for stale AI results
-    ai_result = st.session_state.get('ai_analysis_result')
-    content_result = st.session_state.get('latest_result')
-    
-    if ai_result and content_result:
-        is_fresh = validate_analysis_freshness(content_result, ai_result)
-        if not is_fresh:
-            st.warning("⚠️ **Notice**: AI analysis results may be from a previous analysis. Run AI analysis again for current content.")
 
 def main():
     """
@@ -659,8 +634,6 @@ def main():
     # Store debug mode in session state for use in validation
     st.session_state['debug_mode'] = debug_mode
     
-    # Display current analysis context
-    display_analysis_status_info()
     
     # Create main content layout
     col1, col2 = st.columns([2, 1])

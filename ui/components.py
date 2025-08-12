@@ -1144,89 +1144,89 @@ def _create_content_tab(result: Dict[str, Any]):
 
 def _create_summary_tab(result: Dict[str, Any], ai_result: Optional[Dict[str, Any]] = None):
 
-# Add the new user-friendly recap at the top
-create_user_friendly_log_recap()
+    # Add the new user-friendly recap at the top
+    create_user_friendly_log_recap()
 
-st.markdown("---")
-st.subheader("Technical Details")    
+    st.markdown("---")
+    st.subheader("Technical Details")    
 
-    """
-    Create processing summary tab content.
-    
-    ENHANCED: Shows different metrics based on input mode
-    """
-    st.subheader("Processing Summary")
-    
-    input_mode = st.session_state.get('input_mode', '🌐 URL Input')
-    
-    # Parse JSON for chunk statistics
-    try:
-        json_output_dict = result.get('json_output', {})
-        if isinstance(json_output_dict, dict):
-            big_chunks = json_output_dict.get('big_chunks', [])
-        else:
-            import json
-            if isinstance(json_output_dict, str):
-                parsed_data = json.loads(json_output_dict)
-                big_chunks = parsed_data.get('big_chunks', [])
+        """
+        Create processing summary tab content.
+        
+        ENHANCED: Shows different metrics based on input mode
+        """
+        st.subheader("Processing Summary")
+        
+        input_mode = st.session_state.get('input_mode', '🌐 URL Input')
+        
+        # Parse JSON for chunk statistics
+        try:
+            json_output_dict = result.get('json_output', {})
+            if isinstance(json_output_dict, dict):
+                big_chunks = json_output_dict.get('big_chunks', [])
             else:
-                big_chunks = []
-        
-        total_small_chunks = sum(len(chunk.get('small_chunks', [])) for chunk in big_chunks)
-        
-        # Content processing metrics
-        if input_mode == "🌐 URL Input":
-            st.markdown("#### URL Content Extraction")
-            colA, colB, colC = st.columns(3)
-            colA.metric("Big Chunks", len(big_chunks))
-            colB.metric("Total Small Chunks", total_small_chunks)
-            colC.metric("Extracted Length", f"{len(result.get('extracted_content', '')):,} chars")
-        else:
-            st.markdown("#### Direct JSON Input")
-            colA, colB, colC = st.columns(3)
-            colA.metric("Big Chunks", len(big_chunks))
-            colB.metric("Total Small Chunks", total_small_chunks)
-            total_content = sum(len('\n'.join(chunk.get('small_chunks', []))) for chunk in big_chunks)
-            colC.metric("Total Content", f"{total_content:,} chars")
-        
-        # AI Analysis metrics (if available)
-        if ai_result and ai_result.get('success'):
-            st.markdown("#### AI Analysis Performance")
-            stats = ai_result.get('statistics', {})
+                import json
+                if isinstance(json_output_dict, str):
+                    parsed_data = json.loads(json_output_dict)
+                    big_chunks = parsed_data.get('big_chunks', [])
+                else:
+                    big_chunks = []
             
-            colD, colE, colF, colG = st.columns(4)
-            colD.metric("Processing Time", f"{stats.get('total_processing_time', 0):.2f}s")
-            colE.metric("Successful Analyses", stats.get('successful_analyses', 0))
-            colF.metric("Failed Analyses", stats.get('failed_analyses', 0))
-            colG.metric("Success Rate", f"{stats.get('success_rate', 0):.1f}%")
+            total_small_chunks = sum(len(chunk.get('small_chunks', [])) for chunk in big_chunks)
             
-            # Show freshness status in summary
-            st.markdown("#### Analysis Status")
-            content_timestamp = result.get('processing_timestamp', 0)
-            ai_timestamp = ai_result.get('processing_timestamp', -1)
-            is_fresh = (content_timestamp == ai_timestamp)
+            # Content processing metrics
+            if input_mode == "🌐 URL Input":
+                st.markdown("#### URL Content Extraction")
+                colA, colB, colC = st.columns(3)
+                colA.metric("Big Chunks", len(big_chunks))
+                colB.metric("Total Small Chunks", total_small_chunks)
+                colC.metric("Extracted Length", f"{len(result.get('extracted_content', '')):,} chars")
+            else:
+                st.markdown("#### Direct JSON Input")
+                colA, colB, colC = st.columns(3)
+                colA.metric("Big Chunks", len(big_chunks))
+                colB.metric("Total Small Chunks", total_small_chunks)
+                total_content = sum(len('\n'.join(chunk.get('small_chunks', []))) for chunk in big_chunks)
+                colC.metric("Total Content", f"{total_content:,} chars")
             
-            colH, colI = st.columns(2)
-            with colH:
-                freshness_status = "Fresh ✅" if is_fresh else "Stale ⚠️"
-                st.metric("Result Freshness", freshness_status)
-            with colI:
-                source_match = result.get('url', 'Direct JSON Input') == ai_result.get('source_url', '')
-                source_status = "Match ✅" if source_match else "Different Source"
-                st.metric("Source", source_status)
+            # AI Analysis metrics (if available)
+            if ai_result and ai_result.get('success'):
+                st.markdown("#### AI Analysis Performance")
+                stats = ai_result.get('statistics', {})
+                
+                colD, colE, colF, colG = st.columns(4)
+                colD.metric("Processing Time", f"{stats.get('total_processing_time', 0):.2f}s")
+                colE.metric("Successful Analyses", stats.get('successful_analyses', 0))
+                colF.metric("Failed Analyses", stats.get('failed_analyses', 0))
+                colG.metric("Success Rate", f"{stats.get('success_rate', 0):.1f}%")
+                
+                # Show freshness status in summary
+                st.markdown("#### Analysis Status")
+                content_timestamp = result.get('processing_timestamp', 0)
+                ai_timestamp = ai_result.get('processing_timestamp', -1)
+                is_fresh = (content_timestamp == ai_timestamp)
+                
+                colH, colI = st.columns(2)
+                with colH:
+                    freshness_status = "Fresh ✅" if is_fresh else "Stale ⚠️"
+                    st.metric("Result Freshness", freshness_status)
+                with colI:
+                    source_match = result.get('url', 'Direct JSON Input') == ai_result.get('source_url', '')
+                    source_status = "Match ✅" if source_match else "Different Source"
+                    st.metric("Source", source_status)
+                
+                # Performance insights
+                if stats.get('total_processing_time', 0) > 0 and stats.get('total_chunks', 0) > 0:
+                    avg_time = stats['total_processing_time'] / stats['total_chunks']
+                    efficiency = "High" if stats['total_processing_time'] < stats['total_chunks'] * 2 else "Moderate"
+                    st.info(f"📊 **Performance**: Average {avg_time:.2f}s per chunk | Parallel efficiency: {efficiency}")
             
-            # Performance insights
-            if stats.get('total_processing_time', 0) > 0 and stats.get('total_chunks', 0) > 0:
-                avg_time = stats['total_processing_time'] / stats['total_chunks']
-                efficiency = "High" if stats['total_processing_time'] < stats['total_chunks'] * 2 else "Moderate"
-                st.info(f"📊 **Performance**: Average {avg_time:.2f}s per chunk | Parallel efficiency: {efficiency}")
+        except (json.JSONDecodeError, TypeError, KeyError) as e:
+            st.warning(f"Could not parse JSON for statistics: {e}")
         
-    except (json.JSONDecodeError, TypeError, KeyError) as e:
-        st.warning(f"Could not parse JSON for statistics: {e}")
-    
-    # Show source information
-    source_info = result.get('url', 'Direct JSON Input')
-    st.info(f"**Source**: {source_info}")
+        # Show source information
+        source_info = result.get('url', 'Direct JSON Input')
+        st.info(f"**Source**: {source_info}")
 
 def create_ai_processing_interface(json_output: str, api_key: str, chunks: List[Dict[str, Any]]) -> Dict[str, Any]:
     """

@@ -231,15 +231,15 @@ def process_url_workflow(url: str, debug_mode: bool = False) -> dict:
             if cleared_count > 0:
                 st.info(f"🧹 Cleared previous analysis data for fresh start ({cleared_count} items)")
         
-        # Setup logging based on mode
-    if debug_mode:
-        log_placeholder = st.empty()
-        log_callback = create_debug_logger(log_placeholder)
-        use_simple_logging = False
-    else:
-        # Use simple status for normal users
-        simple_status = create_simple_status_updater()
-        use_simple_logging = True
+                # Setup logging based on mode
+            if debug_mode:
+                log_placeholder = st.empty()
+                log_callback = create_debug_logger(log_placeholder)
+                use_simple_logging = False
+            else:
+                # Use simple status for normal users
+                simple_status = create_simple_status_updater()
+                use_simple_logging = True
         
         # Create a dummy log_callback for backward compatibility
         def log_callback(message):

@@ -132,7 +132,7 @@ UI_SETTINGS = {
     'MAX_PROGRESS_MILESTONES': 10,
     
     # Enable advanced debug options
-    'ENABLE_DEBUG_OPTIONS': True
+    'ENABLE_DEBUG_OPTIONS': True,
     
     # Enable advanced debug options
     'ENABLE_DEBUG_OPTIONS': True,

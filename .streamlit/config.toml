@@ -3,7 +3,6 @@ headless = true
 enableXsrfProtection = false
 enableCORS = false
 maxUploadSize = 1028
-fileWatcherType = "none"
 runOnSave = false
 
 [browser]

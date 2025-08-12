@@ -609,13 +609,13 @@ def convert_violations_json_to_readable(json_content: str, section_title: str = 
             }.get(violation.get("severity", "medium"), "🟡")
             
             violation_text = f"""**{severity_emoji} Violation {i}**
-- **Issue:** {violation.get('violation_type', 'Unknown violation')}
-- **Problematic Text:** "{violation.get('problematic_text', 'N/A')}"
-- **Translation:** "{violation.get('translation', 'N/A')}"
-- **Guideline Reference:** Section {violation.get('guideline_section', 'N/A')} (Page {violation.get('page_number', 'N/A')})
-- **Severity:** {violation.get('severity', 'medium').title()}
-- **Suggested Fix:** "{violation.get('suggested_rewrite', 'No suggestion provided')}"
-- **Translation of Fix:** "{violation.get('rewrite_translation', 'N/A')}"
+- **Issue:** {v.get('violation_type', 'Unknown violation')}
+- **Problematic Text:** "{v.get('problematic_text', 'N/A')}"
+- **Translation:** "{v.get('translation', 'N/A')}"
+- **Guideline Reference:** Section {v.get('guideline_section', 'N/A')} (Page {v.get('page_number', 'N/A')})
+- **Severity:** {v.get('severity', 'medium').title()}
+- **Suggested Fix:** "{v.get('suggested_rewrite', 'No suggestion provided')}"
+- **Translation of Fix:** "{v.get('rewrite_translation', 'N/A')}"
 
 """
             readable_parts.append(violation_text)

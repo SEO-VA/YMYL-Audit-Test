@@ -12,6 +12,10 @@ from ai.assistant_client import AssistantClient
 from utils.json_utils import extract_big_chunks, parse_json_output
 from utils.logging_utils import setup_logger
 from utils.json_utils import convert_violations_json_to_readable
+# Check the imported function source
+import inspect
+source = inspect.getsource(convert_violations_json_to_readable)
+print(f"FUNCTION CHECK: Contains 'Translation of Fix': {'Translation of Fix' in source}")
 
 logger = setup_logger(__name__)
 
@@ -95,3 +99,18 @@ class AnalysisEngine:
         """Clean up resources."""
         if self.assistant_client:
             await self.assistant_client.cleanup()
+                for i, result in enumerate(analysis_results, 1):
+        if result.get("success"):
+            # 🔍 TRACE THE EXACT FUNCTION BEING CALLED
+            print(f"DEBUG: Function module: {convert_violations_json_to_readable.__module__}")
+            print(f"DEBUG: Function file: {convert_violations_json_to_readable.__code__.co_filename}")
+            
+            # 🔍 CHECK RAW AI CONTENT
+            raw_content = result["content"]
+            print(f"DEBUG: Raw contains 'rewrite_translation': {'rewrite_translation' in raw_content}")
+            
+            # 🔍 CALL FUNCTION AND CHECK OUTPUT
+            readable_content = convert_violations_json_to_readable(raw_content)
+            print(f"DEBUG: Output contains 'Translation of Fix': {'Translation of Fix' in readable_content}")
+            
+            report += f"{readable_content}---\n\n"

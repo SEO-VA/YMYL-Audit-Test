@@ -469,8 +469,7 @@ def create_results_tabs(result: Dict[str, Any], ai_result: Optional[Dict[str, An
             _create_content_tab(result)
         with tab5:
             _create_summary_tab(result, ai_result)
-        with tab_debug:
-            _create_debug_ai_data_tab(result, ai_result)  # NEW DEBUG TAB
+
     else:
         # Without AI analysis results - ALSO HAS DEBUG TAB
         tab1, tab2, tab3, tab_debug = st.tabs([
@@ -485,8 +484,7 @@ def create_results_tabs(result: Dict[str, Any], ai_result: Optional[Dict[str, An
             _create_content_tab(result)
         with tab3:
             _create_summary_tab(result)
-        with tab_debug:
-            _create_debug_ai_data_tab(result, None)  # NEW DEBUG TAB
+
 
 
 def _create_ai_report_tab(ai_result: Dict[str, Any], content_result: Optional[Dict[str, Any]] = None):

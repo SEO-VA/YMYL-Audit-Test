@@ -4,7 +4,6 @@ UI Components for YMYL Audit Tool
 Reusable Streamlit UI components for the application interface.
 FIXED: Proper Unicode handling in JSON display - no more encoding issues!
 NEW FEATURE: Dual input mode - URL extraction OR direct JSON input
-DEBUG: Added debug tab to diagnose Unicode decoding issues
 """
 import streamlit as st
 import time
@@ -457,7 +456,6 @@ def create_results_tabs(result: Dict[str, Any], ai_result: Optional[Dict[str, An
             "🔧 JSON Output", 
             "📄 Source Content", 
             "📈 Summary",
-            "🐛 DEBUG: AI Data"  # NEW DEBUG TAB
         ])
         with tab1:
             _create_ai_report_tab(ai_result, result)
@@ -476,7 +474,6 @@ def create_results_tabs(result: Dict[str, Any], ai_result: Optional[Dict[str, An
             "🎯 JSON Output", 
             "📄 Source Content", 
             "📈 Summary",
-            "🐛 DEBUG: AI Data"  # NEW DEBUG TAB
         ])
         with tab1:
             _create_json_tab(result)

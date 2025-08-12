@@ -31,7 +31,7 @@ from ui.components import (
     create_ai_processing_interface,
     display_error_message,
     display_success_message,
-    create_info_panel,
+    create_info_panel
 )
 from utils.logging_utils import setup_logger
 
@@ -697,6 +697,7 @@ def main():
     
     with col2:
         create_how_it_works_section()
+
     
     # Results section
     if 'latest_result' in st.session_state and st.session_state['latest_result'].get('success'):

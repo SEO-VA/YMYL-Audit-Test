@@ -12,10 +12,6 @@ from ai.assistant_client import AssistantClient
 from utils.json_utils import extract_big_chunks, parse_json_output
 from utils.logging_utils import setup_logger
 from utils.json_utils import convert_violations_json_to_readable
-# Check the imported function source
-import inspect
-source = inspect.getsource(convert_violations_json_to_readable)
-print(f"FUNCTION CHECK: Contains 'Translation of Fix': {'Translation of Fix' in source}")
 
 logger = setup_logger(__name__)
 
@@ -76,41 +72,46 @@ class AnalysisEngine:
         results.sort(key=lambda x: x.get("chunk_index", 0))
         return results
 
-    def _create_final_report(self, analysis_results: List[Dict[str, Any]]) -> str:
-        """Create final report from analysis results."""
-        report = f"""# YMYL Compliance Audit Report
-
-    **Date:** {datetime.now().strftime("%Y-%m-%d")}
-
-    ---
-
-    """
+def _create_final_report(self, analysis_results: List[Dict[str, Any]]) -> str:
+    """Create final report from analysis results."""
+    
+    # 🔍 SAFE DEBUG: Only runs when method is called, not at import time
+    print("=" * 60)
+    print("DEBUG: Final report generation starting")
+    
+    # Check which function we're using
+    try:
+        import inspect
+        function_module = convert_violations_json_to_readable.__module__
+        function_file = convert_violations_json_to_readable.__code__.co_filename
+        function_source = inspect.getsource(convert_violations_json_to_readable)
         
-        for i, result in enumerate(analysis_results, 1):
-            if result.get("success"):
-                readable_content = convert_violations_json_to_readable(result["content"])
-                report += f"{readable_content}---\n\n"
-            else:
-                report += f"## Section {i}\n\n❌ **Analysis failed:** {result.get('error', 'Unknown error')}\n\n---\n\n"
+        print(f"DEBUG: Function module: {function_module}")
+        print(f"DEBUG: Function file: {function_file}")
+        print(f"DEBUG: Function source contains 'Translation of Fix': {'Translation of Fix' in function_source}")
         
-        return report
+    except Exception as e:
+        print(f"DEBUG: Error inspecting function: {e}")
+    
+    report = f"""# YMYL Compliance Audit Report
 
-    async def cleanup(self):
-        """Clean up resources."""
-        if self.assistant_client:
-            await self.assistant_client.cleanup()
-                for i, result in enumerate(analysis_results, 1):
+**Date:** {datetime.now().strftime("%Y-%m-%d")}
+
+---
+
+"""
+    
+    for i, result in enumerate(analysis_results, 1):
         if result.get("success"):
-            # 🔍 TRACE THE EXACT FUNCTION BEING CALLED
-            print(f"DEBUG: Function module: {convert_violations_json_to_readable.__module__}")
-            print(f"DEBUG: Function file: {convert_violations_json_to_readable.__code__.co_filename}")
-            
-            # 🔍 CHECK RAW AI CONTENT
+            # 🔍 DEBUG: Check each result
             raw_content = result["content"]
             print(f"DEBUG: Raw contains 'rewrite_translation': {'rewrite_translation' in raw_content}")
             
-            # 🔍 CALL FUNCTION AND CHECK OUTPUT
             readable_content = convert_violations_json_to_readable(raw_content)
             print(f"DEBUG: Output contains 'Translation of Fix': {'Translation of Fix' in readable_content}")
             
             report += f"{readable_content}---\n\n"
+        else:
+            report += f"## Section {i}\n\n❌ **Analysis failed:** {result.get('error', 'Unknown error')}\n\n---\n\n"
+    
+    return report

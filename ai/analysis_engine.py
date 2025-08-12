@@ -102,16 +102,16 @@ class AnalysisEngine:
         """Create final report from analysis results."""
         report = f"""# YMYL Compliance Audit Report
 
-**Date:** {datetime.now().strftime("%Y-%m-%d")}
+    **Date:** {datetime.now().strftime("%Y-%m-%d")}
 
----
+    ---
 
-"""
+    """
         
         for i, result in enumerate(analysis_results, 1):
             if result.get("success"):
-                readable_content = convert_violations_json_to_readable(result["content"])
-                report += f"## Section {i}\n\n{readable_content}---\n\n"
+                readable_content = convert_violations_json_to_readable(result["content"], f"Section {i}")
+                report += f"{readable_content}---\n\n"
             else:
                 report += f"## Section {i}\n\n❌ **Analysis failed:** {result.get('error', 'Unknown error')}\n\n---\n\n"
         

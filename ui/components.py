@@ -382,6 +382,8 @@ def create_ai_analysis_section(api_key: Optional[str], json_output: Any, source_
                     else:
                         st.warning("⚠️ **Stale AI Results Detected** - Run analysis again for current content")
             with col2:
+                st.markdown("<div style='margin-top: -10px;'></div>", unsafe_allow_html=True)
+                
                 button_label = "✨ Run AI Analysis"
                 button_type = "secondary"
                 button_help = "Analyze content for YMYL compliance using AI"

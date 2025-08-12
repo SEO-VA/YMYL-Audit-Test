@@ -650,7 +650,12 @@ def main():
                 else:
                     display_error_message("Please provide JSON content to analyze")
                 return
-        
+            
+            # Route to appropriate workflow based on input mode
+            if input_mode == 'url':
+                result = process_url_workflow(content, debug_mode)
+            else:  # direct_json
+                result = process_direct_json_workflow(content, debug_mode)
             
             # Store result
             st.session_state["latest_result"] = result

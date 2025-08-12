@@ -170,82 +170,57 @@ class AnalysisEngine:
         
         return results
 
-    def _create_final_report(self, analysis_results: List[Dict[str, Any]], chunks: List[Dict[str, Any]]) -> str:
-        """
-        Create the final YMYL compliance report with proper section formatting.
+def _create_final_report(self, analysis_results: List[Dict[str, Any]], chunks: List[Dict[str, Any]]) -> str:
+    """
+    Create the final YMYL compliance report with JSON violations converted to readable format.
+    
+    Args:
+        analysis_results (list): Results from AI analysis
+        chunks (list): Original chunk data
         
-        Args:
-            analysis_results (list): Results from AI analysis
-            chunks (list): Original chunk data
-            
-        Returns:
-            str: Final report in markdown format
-        """
-        logger.info("Creating final compliance report")
-        
-        # Initialize variables
-        audit_date = datetime.now().strftime("%Y-%m-%d")
-        successful_count = len([r for r in analysis_results if r.get("success")])
-        failed_count = len(analysis_results) - successful_count
-        
-        # Header
-        header = f"""# YMYL Compliance Audit Report
+    Returns:
+        str: Final report in markdown format
+    """
+    logger.info("Creating final compliance report from JSON violations")
+    
+    # Import the helper function
+    from utils.json_utils import convert_violations_json_to_readable
+    
+    # Initialize variables
+    audit_date = datetime.now().strftime("%Y-%m-%d")
+    successful_count = len([r for r in analysis_results if r.get("success")])
+    failed_count = len(analysis_results) - successful_count
+    
+    # Header
+    header = f"""# YMYL Compliance Audit Report
 
 **Audit Date:** {audit_date}
 **Content Type:** Online Casino/Gambling  
-**Analysis Method:** Section-by-section E-E-A-T compliance review
+**Analysis Method:** Section-by-section YMYL/EEAT compliance review
 
 ---
 
 """
-        
-        # Process analyses
-        report_parts = [header]
-        
-        for result in analysis_results:
-            if result.get("success"):
-                content = result["content"]
-                
-                # Extract section name from [Section Name] format
-                lines = content.strip().split('\n')
-                section_name = ""
-                
-                # Find the section name line
-                for line in lines:
-                    if line.strip().startswith('[Section Name]'):
-                        section_name = line.replace('[Section Name]', '').strip()
-                        break
-                
-                if section_name:
-                    # Create clean section with proper header
-                    clean_content = f"## {section_name}\n\n"
-                    
-                    # Add everything from the first issue or compliance statement
-                    in_content = False
-                    for line in lines:
-                        # Start capturing from issue cards or compliance statements
-                        if (line.strip().startswith('🔴') or line.strip().startswith('🟠') or 
-                            line.strip().startswith('🟡') or line.strip().startswith('🔵') or 
-                            line.strip().startswith('✅')):
-                            in_content = True
-                        
-                        if in_content:
-                            clean_content += line + '\n'
-                    
-                    report_parts.append(clean_content)
-                else:
-                    # Fallback: use content as-is with proper header
-                    if lines and not lines[0].startswith('#'):
-                        section_header = f"## {lines[0]}"
-                        content = '\n'.join([section_header] + lines[1:])
-                    report_parts.append(content)
-                
-                report_parts.append("\n---\n")
-                
-            else:
-                # Add error section for failed analyses
-                chunk_idx = result.get('chunk_index', 'Unknown')
-                error_section = f"""## Analysis Error for Chunk {chunk_idx}
+    
+    # Process analyses
+    report_parts = [header]
+    section_number = 1
+    
+    for result in analysis_results:
+        if result.get("success"):
+            # Convert JSON violations to readable format
+            section_title = f"Section {section_number}"
+            readable_content = convert_violations_json_to_readable(
+                result["content"], 
+                section_title
+            )
+            report_parts.append(readable_content)
+            report_parts.append("---\n\n")
+            
+        else:
+            # Add error section for failed analyses
+            chunk_idx = result.get('chunk_index', 'Unknown')
+            error_section = f"""## Section {section_number} - Analysis Error
 
 ❌ **Processing Failed**
 **Error:** {result.get('error', 'Unknown error')}
@@ -254,14 +229,17 @@ class AnalysisEngine:
 This section could not be analyzed due to technical issues. Manual review may be required.
 
 ---
+
 """
-                report_parts.append(error_section)
+            report_parts.append(error_section)
         
-        # Processing summary
-        total_sections = len(analysis_results)
-        processing_time = time.time() - self.analysis_start_time if self.analysis_start_time else 0
-        
-        summary = f"""
+        section_number += 1
+    
+    # Processing summary
+    total_sections = len(analysis_results)
+    processing_time = time.time() - self.analysis_start_time if self.analysis_start_time else 0
+    
+    summary = f"""
 ## Processing Summary
 
 **✅ Sections Successfully Analyzed:** {successful_count}
@@ -280,13 +258,13 @@ This section could not be analyzed due to technical issues. Manual review may be
 *Report generated by AI-powered YMYL compliance analysis system*
 *Assistant ID: {self.assistant_client.assistant_id}*
 """
-        
-        report_parts.append(summary)
-        
-        final_report = ''.join(report_parts)
-        logger.info(f"Final report generated: {len(final_report):,} characters")
-        
-        return final_report
+    
+    report_parts.append(summary)
+    
+    final_report = ''.join(report_parts)
+    logger.info(f"Final report generated: {len(final_report):,} characters")
+    
+    return final_report
 
     def _calculate_final_stats(self, analysis_results: List[Dict[str, Any]], processing_time: float) -> Dict[str, Any]:
         """

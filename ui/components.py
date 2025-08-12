@@ -815,13 +815,16 @@ def _create_download_buttons(formats: Dict[str, bytes]):
                 st.write("Please refresh the page to access downloads.")
 
 def _create_individual_analyses_tab(ai_result: Dict[str, Any]):
-    """Create individual analyses tab content."""
+    """Create individual analyses tab with JSON violations converted to readable format."""
+    
+    from utils.json_utils import convert_violations_json_to_readable  # Import the helper
+    
     st.markdown("### Individual Chunk Analysis Results")
     
     analysis_details = ai_result.get('analysis_results', [])
     stats = ai_result.get('statistics', {})
     
-    # Processing metrics
+    # Processing metrics (unchanged)
     col1, col2, col3, col4 = st.columns(4)
     with col1:
         st.metric("Processing Time", f"{stats.get('total_processing_time', 0):.2f}s")
@@ -834,12 +837,15 @@ def _create_individual_analyses_tab(ai_result: Dict[str, Any]):
     
     st.markdown("---")
     
-    # Individual results
+    # Individual results - UPDATED to convert JSON
     for detail in analysis_details:
         chunk_idx = detail.get('chunk_index', 'Unknown')
         if detail.get('success'):
+            # Convert JSON to readable format
+            readable_content = convert_violations_json_to_readable(detail['content'])
+            
             with st.expander(f"✅ Chunk {chunk_idx} Analysis (Success)"):
-                st.markdown(detail['content'])
+                st.markdown(readable_content)
                 if 'processing_time' in detail:
                     st.caption(f"Processing time: {detail['processing_time']:.2f}s")
         else:

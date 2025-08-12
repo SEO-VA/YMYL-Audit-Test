@@ -185,7 +185,7 @@ def create_how_it_works_section():
     st.subheader("ℹ️ How it works")
     st.markdown("""
 1. **Choose Input**: Paste URL OR provide chunked content directly.
-2. **Extract Content**: Click on "🚀 Process URL" or "Analyze Json" to start content extraction.
+2. **Extract Content**: Click on "🚀 Process URL" or "Validate Chunked content" to start content extraction.
 3. **YMYL Analysis**: Click on "Run AI Analysis" to start the adit.
 4. **Export**: Generate professional reports in multiple formats.
 """)
@@ -293,7 +293,7 @@ def _create_direct_json_input_mode() -> Tuple[str, str, bool]:
         st.markdown("")  # Spacing
     with col2:
         process_clicked = st.button(
-            "✨ Analyze JSON", 
+            "✨ Validate Chunked content", 
             type="primary", 
             use_container_width=True,
             help="Process the provided JSON content directly with AI analysis",

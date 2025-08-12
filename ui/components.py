@@ -184,26 +184,11 @@ def create_how_it_works_section():
     """Create the 'How it works' information section with user guidance."""
     st.subheader("ℹ️ How it works")
     st.markdown("""
-1. **Choose Input**: Extract from URL OR provide chunked JSON directly.
-2. **Process**: Extract content or validate provided chunks.
-3. **YMYL Analysis**: AI-powered YMYL audit of the content.
+1. **Choose Input**: Paste URL OR provide chunked content directly.
+2. **Extract Content**: Click on "🚀 Process URL" or "Analyze Json" to start content extraction.
+3. **YMYL Analysis**: Click on "Run AI Analysis" to start the adit.
 4. **Export**: Generate professional reports in multiple formats.
 """)
-    # Add user-friendly guidance
-    with st.expander("📚 New User Guide"):
-        st.markdown("""
-**First time using this tool?**
-- **For websites**: Just paste any URL and click "Process URL"
-- **For JSON data**: Switch to "Direct JSON" mode and paste your content
-- **Having issues?** Check the "Processing Summary" section for what went wrong
-- **Need help?** Turn on "Debug Mode" in the sidebar for detailed technical information
-**What you'll see:**
-- Simple status messages during processing
-- A summary of what happened at the end
-- Clear error messages if something go wrong
-- Professional reports you can download
-""")
-    st.info("💡 **New**: Choose between URL extraction or direct JSON input!")
 
 def create_dual_input_section() -> Tuple[str, str, bool]:
     """
@@ -302,25 +287,13 @@ def _create_direct_json_input_mode() -> Tuple[str, str, bool]:
         help="Paste your chunked JSON content here. The tool expects the standard chunk format.",
         key="direct_json_input"
     )
-    # Show character count and basic info
-    if json_content:
-        char_count = len(json_content)
-        st.caption(f"📊 Content length: {char_count:,} characters")
-        # Try to give quick preview of chunk count
-        try:
-            import json
-            parsed = json.loads(json_content)
-            chunk_count = len(parsed.get('big_chunks', []))
-            st.caption(f"📦 Detected: {chunk_count} chunks")
-        except:
-            st.caption("⚠️ JSON format validation will occur during processing")
     # Process button
     col1, col2 = st.columns([2, 1])
     with col1:
         st.markdown("")  # Spacing
     with col2:
         process_clicked = st.button(
-            "🤖 Analyze JSON", 
+            "✨ Analyze JSON", 
             type="primary", 
             use_container_width=True,
             help="Process the provided JSON content directly with AI analysis",
@@ -379,7 +352,7 @@ def create_ai_analysis_section(api_key: Optional[str], json_output: Any, source_
         return False
     # ENHANCED: Show different messaging based on input mode
     input_mode = st.session_state.get('input_mode', '🌐 URL Input')
-    st.markdown("### 🤖 AI Compliance Analysis")
+    st.markdown("### ✨ AI Compliance Analysis")
     # Show analysis readiness status
     if json_output:
         try:
@@ -410,7 +383,7 @@ def create_ai_analysis_section(api_key: Optional[str], json_output: Any, source_
                     else:
                         st.warning("⚠️ **Stale AI Results Detected** - Run analysis again for current content")
             with col2:
-                button_label = "🤖 Run AI Analysis"
+                button_label = "✨ Run AI Analysis"
                 button_type = "secondary"
                 button_help = "Analyze content for YMYL compliance using AI"
                 # Customize button based on current state
@@ -550,7 +523,7 @@ def _create_debug_ai_data_tab(result: Dict[str, Any], ai_result: Optional[Dict[s
         st.write(f"- Has parsed JSON: {'json_output' in result}")
     st.markdown("---")
     # Show what gets sent to AI
-    st.markdown("### 🤖 Data Sent to AI (Working Path)")
+    st.markdown("### ✨ Data Sent to AI (Working Path)")
     # Get the JSON data that would be sent to AI
     json_for_ai = result.get('json_output')  # This is what gets sent to AI
     if json_for_ai:

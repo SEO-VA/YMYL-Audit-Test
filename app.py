@@ -289,7 +289,7 @@ def process_url_workflow(url: str, debug_mode: bool = False) -> dict:
         if use_simple_logging:
             simple_status("Processing content into sections...", "info")
         else:
-            log_callback("🤖 Initializing chunk processor...")
+            log_callback("✨ Initializing chunk processor...")
             
         with ChunkProcessor(log_callback=log_callback if debug_mode else None) as processor:
             if not debug_mode:
@@ -664,7 +664,7 @@ def main():
             
             if result["success"]:
                 display_success_message(success_message)
-                st.info("🤖 Ready for AI compliance analysis!")
+                st.info("✨ Ready for AI compliance analysis!")
             else:
                 display_error_message(result['error'])
     
@@ -688,7 +688,7 @@ def main():
             else:
                 try:
                     # Pass the parsed JSON dict for processing
-                    with st.spinner("🤖 Initializing AI analysis..."):
+                    with st.spinner("✨ Initializing AI analysis..."):
                         ai_results = asyncio.run(process_ai_analysis(
                             json_for_ai, 
                             api_key, 

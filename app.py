@@ -32,7 +32,6 @@ from ui.components import (
     display_error_message,
     display_success_message,
     create_info_panel,
-    show_input_mode_context
 )
 from utils.logging_utils import setup_logger
 
@@ -698,8 +697,6 @@ def main():
     
     with col2:
         create_how_it_works_section()
-        # NEW: Show input mode context
-        show_input_mode_context()
     
     # Results section
     if 'latest_result' in st.session_state and st.session_state['latest_result'].get('success'):

@@ -446,7 +446,7 @@ def create_results_tabs(result: Dict[str, Any], ai_result: Optional[Dict[str, An
         create_content_freshness_indicator(result, ai_result)
     if ai_result and ai_result.get('success'):
         # With AI analysis results - INCLUDES DEBUG TAB
-        tab1, tab2, tab3, tab4, tab5, tab_debug = st.tabs([
+        tab1, tab2, tab3, tab4, tab5, = st.tabs([
             "🎯 AI Compliance Report", 
             "📊 Individual Analyses", 
             "🔧 JSON Output", 

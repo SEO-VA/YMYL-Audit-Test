@@ -11,35 +11,9 @@ from typing import List, Dict, Any, Optional, Callable
 from ai.assistant_client import AssistantClient
 from utils.json_utils import extract_big_chunks, parse_json_output
 from utils.logging_utils import setup_logger
+from utils.json_utils import convert_violations_json_to_readable
 
 logger = setup_logger(__name__)
-
-
-def convert_violations_json_to_readable(json_content: str) -> str:
-    """Convert JSON violations to readable markdown."""
-    try:
-        data = json.loads(json_content)
-        violations = data.get("violations", [])
-        
-        if not violations:
-            return "✅ **No violations found.**\n\n"
-        
-        result = ""
-        for i, v in enumerate(violations, 1):
-            emoji = {"critical": "🔴", "medium": "🟡", "low": "🔵"}.get(v.get("severity", "medium"), "🟡")
-            result += f"""**{emoji} Violation {i}**
-- **Issue:** {v.get('violation_type', 'Unknown')}
-- **Text:** "{v.get('problematic_text', 'N/A')}"
-- **Translation:** "{v.get('translation', 'N/A')}"
-- **Reference:** Section {v.get('guideline_section', 'N/A')} (Page {v.get('page_number', 'N/A')})
-- **Severity:** {v.get('severity', 'medium').title()}
-- **Fix:** "{v.get('suggested_rewrite', 'No suggestion')}"
-
-"""
-        return result
-    except:
-        return json_content + "\n\n"
-
 
 class AnalysisEngine:
     """Minimal AI analysis engine."""

@@ -470,7 +470,7 @@ def create_results_tabs(result: Dict[str, Any], ai_result: Optional[Dict[str, An
 
     else:
         # Without AI analysis results - ALSO HAS DEBUG TAB
-        tab1, tab2, tab3, tab_debug = st.tabs([
+        tab1, tab2, tab3, = st.tabs([
             "🎯 JSON Output", 
             "📄 Source Content", 
             "📈 Summary",

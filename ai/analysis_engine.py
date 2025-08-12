@@ -1,19 +1,13 @@
 #!/usr/bin/env python3
 """
-Analysis Engine for YMYL Audit Tool - REDESIGNED FOR HUMAN READABILITY
+Analysis Engine for YMYL Audit Tool
 
-Orchestrates the complete AI analysis workflow with focus on:
-- Clean, executive-level reporting
-- Visual hierarchy and quick scanning
-- Actionable insights over technical details
-- Professional presentation for stakeholders
+Orchestrates the complete AI analysis workflow including:
+- Parallel processing of content chunks
+- Result aggregation and report generation
+- Progress tracking and error handling
 
-MAJOR CHANGES:
-- Complete report structure overhaul
-- Issue aggregation and prioritization
-- Visual improvements with tables and status indicators
-- Technical details moved to appendix
-- Executive summary with key metrics
+FIXED: Progress calculation bug - now uses actual completion count instead of chunk indices
 """
 
 import asyncio
@@ -30,21 +24,42 @@ logger = setup_logger(__name__)
 
 class AnalysisEngine:
     """
-    Orchestrates AI-powered YMYL compliance analysis with human-readable reporting.
+    Orchestrates AI-powered YMYL compliance analysis.
+    
+    Handles:
+    - Parallel processing of content chunks
+    - Progress tracking and reporting
+    - Result aggregation and report generation
+    - Error handling and recovery
     """
     
     def __init__(self, api_key: str, progress_callback: Optional[Callable[[Dict[str, Any]], None]] = None):
-        """Initialize the AnalysisEngine."""
+        """
+        Initialize the AnalysisEngine.
+        
+        Args:
+            api_key (str): OpenAI API key
+            progress_callback: Optional callback for progress updates
+        """
         self.assistant_client = AssistantClient(api_key)
         self.progress_callback = progress_callback
         self.analysis_start_time = None
         self.analysis_stats = {}
+        # FIXED: Add completion tracking variables
         self._completed_count = 0
         self._total_chunks = 0
         logger.info("AnalysisEngine initialized")
 
     async def process_json_content(self, json_output: str) -> Dict[str, Any]:
-        """Process JSON output through complete AI analysis workflow."""
+        """
+        Process JSON output through complete AI analysis workflow.
+        
+        Args:
+            json_output (str): JSON string from chunk processor
+            
+        Returns:
+            dict: Complete analysis results with success status and report
+        """
         logger.info("Starting JSON content analysis workflow")
         self.analysis_start_time = time.time()
         
@@ -68,7 +83,7 @@ class AnalysisEngine:
             
             logger.info(f"Extracted {len(chunks)} chunks for analysis")
             
-            # Initialize completion tracking
+            # FIXED: Initialize completion tracking
             self._completed_count = 0
             self._total_chunks = len(chunks)
             
@@ -76,9 +91,9 @@ class AnalysisEngine:
             self._update_progress(f"Analyzing {len(chunks)} chunks in parallel", 0.3)
             analysis_results = await self._process_chunks_parallel(chunks)
             
-            # Step 4: Generate human-readable report
-            self._update_progress("Generating executive report", 0.9)
-            final_report = self._create_human_readable_report(analysis_results, chunks)
+            # Step 4: Generate final report
+            self._update_progress("Generating final report", 0.9)
+            final_report = self._create_final_report(analysis_results, chunks)
             
             # Step 5: Calculate final statistics
             processing_time = time.time() - self.analysis_start_time
@@ -101,9 +116,20 @@ class AnalysisEngine:
             return self._create_error_result(error_msg)
 
     async def _process_chunks_parallel(self, chunks: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        """Process multiple chunks in parallel with controlled concurrency."""
+        """
+        Process multiple chunks in parallel with controlled concurrency.
+        
+        FIXED: Now uses asyncio.as_completed() for accurate progress tracking
+        
+        Args:
+            chunks (list): List of chunk dictionaries
+            
+        Returns:
+            list: List of analysis results
+        """
         logger.info(f"Starting parallel analysis of {len(chunks)} chunks")
         
+        # Create semaphore to limit concurrent requests
         semaphore = asyncio.Semaphore(MAX_PARALLEL_REQUESTS)
         
         async def process_single_chunk(chunk):
@@ -115,307 +141,131 @@ class AnalysisEngine:
         
         # Create tasks for all chunks
         tasks = [process_single_chunk(chunk) for chunk in chunks]
+        
+        # FIXED: Use asyncio.as_completed() for proper progress tracking
         results = []
         completed = 0
         
-        # Process tasks as they complete
+        # Process tasks as they complete (not in original order)
         for coro in asyncio.as_completed(tasks):
             result = await coro
             results.append(result)
             completed += 1
             
+            # FIXED: Update progress based on actual completion count
             progress = 0.3 + (0.55 * completed / len(chunks))
             self._update_progress(f"Completed {completed}/{len(chunks)} chunk analyses", progress)
             
+            # Log individual chunk completion with better info
             chunk_idx = result.get("chunk_index", "unknown")
             if result.get("success"):
                 logger.info(f"Chunk {chunk_idx} analysis completed successfully ({completed}/{len(chunks)})")
             else:
                 logger.warning(f"Chunk {chunk_idx} analysis failed: {result.get('error')} ({completed}/{len(chunks)})")
         
-        # Sort results by chunk index to maintain order
+        # Sort results by chunk index to maintain order for final report
         results.sort(key=lambda x: x.get("chunk_index", 0))
         
         successful = len([r for r in results if r.get("success")])
         failed = len(results) - successful
         
         logger.info(f"Parallel processing completed: {successful} successful, {failed} failed")
+        
         return results
 
-    def _create_human_readable_report(self, analysis_results: List[Dict[str, Any]], chunks: List[Dict[str, Any]]) -> str:
-        """Create a clean, executive-level compliance report."""
-        logger.info("Creating human-readable compliance report")
+    def _create_final_report(self, analysis_results: List[Dict[str, Any]], chunks: List[Dict[str, Any]]) -> str:
+        """
+        Create the final YMYL compliance report.
         
-        # Aggregate and process findings
-        all_issues = self._aggregate_issues(analysis_results)
-        section_summaries = self._create_section_summaries(analysis_results)
+        Args:
+            analysis_results (list): Results from AI analysis
+            chunks (list): Original chunk data
+            
+        Returns:
+            str: Final report in markdown format
+        """
+        logger.info("Creating final compliance report")
         
-        # Build report components
-        report_parts = [
-            self._create_executive_summary(all_issues, section_summaries),
-            self._create_priority_findings(all_issues),
-            self._create_section_overview(section_summaries),
-            self._create_detailed_findings(analysis_results),
-            self._create_technical_appendix(analysis_results)
-        ]
+        # Header
+        audit_date = datetime.now().strftime("%Y-%m-%d")
+        successful_count = len([r for r in analysis_results if r.get("success")])
+        failed_count = len(analysis_results) - successful_count
         
-        final_report = '\n\n'.join(filter(None, report_parts))
-        logger.info(f"Human-readable report generated: {len(final_report):,} characters")
+        header = f"""# YMYL Compliance Audit Report
+
+**Audit Date:** {audit_date}
+**Content Type:** Online Casino/Gambling  
+**Analysis Method:** Section-by-section E-E-A-T compliance review
+
+---
+
+"""
+        
+        # Process successful analyses
+        report_parts = [header]
+        
+        for result in analysis_results:
+            if result.get("success"):
+                report_parts.append(result["content"])
+                report_parts.append("\n---\n")
+            else:
+                # Add error section for failed analyses
+                chunk_idx = result.get('chunk_index', 'Unknown')
+                error_section = f"""
+## Analysis Error for Chunk {chunk_idx}
+
+❌ **Processing Failed**
+**Error:** {result.get('error', 'Unknown error')}
+**Chunk Index:** {chunk_idx}
+
+This section could not be analyzed due to technical issues. Manual review may be required.
+
+---
+"""
+                report_parts.append(error_section)
+        
+        # Processing summary
+        total_sections = len(analysis_results)
+        processing_time = getattr(self, 'analysis_stats', {}).get('processing_time', 0)
+        
+        summary = f"""
+## Processing Summary
+
+**✅ Sections Successfully Analyzed:** {successful_count}
+**❌ Sections with Analysis Errors:** {failed_count}  
+**📊 Total Sections:** {total_sections}
+**⏱️ Processing Time:** {processing_time:.2f} seconds
+**🔄 Analysis Method:** Parallel AI processing with OpenAI Assistant API
+
+### Performance Metrics
+- **Average Time per Section:** {(processing_time / total_sections):.2f}s
+- **Success Rate:** {(successful_count / total_sections * 100):.1f}%
+- **Parallel Efficiency:** {'High' if processing_time < total_sections * 2 else 'Moderate'}
+
+---
+
+*Report generated by AI-powered YMYL compliance analysis system*
+*Assistant ID: {self.assistant_client.assistant_id}*
+"""
+        
+        report_parts.append(summary)
+        
+        final_report = ''.join(report_parts)
+        logger.info(f"Final report generated: {len(final_report):,} characters")
         
         return final_report
 
-    def _aggregate_issues(self, analysis_results: List[Dict[str, Any]]) -> Dict[str, List[Dict]]:
-        """Aggregate and categorize all issues for summary views."""
-        issues_by_priority = {"critical": [], "high": [], "medium": [], "low": []}
-        issues_by_category = {}
-        
-        for result in analysis_results:
-            if not result.get("success"):
-                continue
-                
-            # Parse the content to extract issues (this would need to be adapted based on your AI response format)
-            section_name = self._extract_section_name(result.get("content", ""))
-            issues = self._parse_issues_from_content(result.get("content", ""))
-            
-            for issue in issues:
-                priority = issue.get("severity", "low").lower()
-                if priority in issues_by_priority:
-                    enhanced_issue = {
-                        **issue,
-                        "section": section_name,
-                        "section_index": result.get("chunk_index", 0)
-                    }
-                    issues_by_priority[priority].append(enhanced_issue)
-                    
-                    # Also categorize by type
-                    category = issue.get("category", "Other")
-                    if category not in issues_by_category:
-                        issues_by_category[category] = []
-                    issues_by_category[category].append(enhanced_issue)
-        
-        return issues_by_priority
-
-    def _create_section_summaries(self, analysis_results: List[Dict[str, Any]]) -> List[Dict]:
-        """Create summary data for each section."""
-        summaries = []
-        
-        for result in analysis_results:
-            if result.get("success"):
-                section_name = self._extract_section_name(result.get("content", ""))
-                issues = self._parse_issues_from_content(result.get("content", ""))
-                
-                # Determine section status
-                critical_count = len([i for i in issues if i.get("severity", "").lower() == "critical"])
-                high_count = len([i for i in issues if i.get("severity", "").lower() == "high"])
-                
-                if critical_count > 0:
-                    status = "❌ Critical Issues"
-                    priority = "🔴 High"
-                elif high_count > 0:
-                    status = "⚠️ Needs Review"
-                    priority = "🟠 Medium"
-                elif len(issues) > 0:
-                    status = "🔵 Minor Issues"
-                    priority = "🟡 Low"
-                else:
-                    status = "✅ Compliant"
-                    priority = "✅ None"
-                
-                summaries.append({
-                    "section": section_name,
-                    "status": status,
-                    "issue_count": len(issues),
-                    "priority": priority,
-                    "critical_count": critical_count,
-                    "high_count": high_count
-                })
-            else:
-                # Handle failed analyses
-                summaries.append({
-                    "section": f"Section {result.get('chunk_index', 'Unknown')}",
-                    "status": "🔧 Analysis Failed",
-                    "issue_count": 0,
-                    "priority": "⚠️ Manual Review",
-                    "critical_count": 0,
-                    "high_count": 0,
-                    "error": result.get("error", "Unknown error")
-                })
-        
-        return summaries
-
-    def _create_executive_summary(self, all_issues: Dict, section_summaries: List[Dict]) -> str:
-        """Create clean executive summary with key metrics."""
-        total_critical = len(all_issues["critical"])
-        total_high = len(all_issues["high"])
-        total_medium = len(all_issues["medium"])
-        total_low = len(all_issues["low"])
-        
-        return f"""# 🎯 YMYL Compliance Audit Report
-
-## 📈 Issue Breakdown
-
-| Priority Level | Count |
-|---------------|-------|
-| 🔴 Critical | {total_critical} |
-| 🟠 High | {total_high} |
-| 🟡 Medium | {total_medium} |
-| 🔵 Low | {total_low} |"""
-
-    def _create_priority_findings(self, all_issues: Dict) -> str:
-        """Create actionable priority sections."""
-        sections = []
-        
-        if all_issues["critical"]:
-            sections.append("## 🚨 Critical Issues - Immediate Action Required")
-            sections.append("\n> These issues pose direct risks to user safety or legal compliance\n")
-            
-            for i, issue in enumerate(all_issues["critical"][:5], 1):  # Top 5 critical
-                sections.append(f"**{i}. {issue.get('section', 'Unknown Section')}**")
-                sections.append(f"   - **Issue:** {issue.get('summary', 'Critical compliance violation')}")
-                sections.append(f"   - **Risk:** {issue.get('risk_description', 'User safety or legal risk')}")
-                sections.append(f"   - **Quick Fix:** {issue.get('quick_fix', 'See detailed recommendations')}")
-                sections.append("")
-            
-            if len(all_issues["critical"]) > 5:
-                sections.append(f"*... and {len(all_issues['critical']) - 5} more critical issues (see detailed findings below)*\n")
-        
-        if all_issues["high"]:
-            sections.append("## ⚠️ High Priority Issues - Address Within 24 Hours")
-            sections.append("\n> These issues significantly impact content trustworthiness and E-E-A-T\n")
-            
-            for i, issue in enumerate(all_issues["high"][:8], 1):  # Top 8 high
-                sections.append(f"**{i}. {issue.get('section', 'Unknown Section')}:** {issue.get('summary', 'E-E-A-T violation')}")
-            
-            if len(all_issues["high"]) > 8:
-                sections.append(f"\n*... and {len(all_issues['high']) - 8} more high priority issues*")
-        
-        return '\n'.join(sections) if sections else ""
-
-    def _create_section_overview(self, section_summaries: List[Dict]) -> str:
-        """Create visual section status overview."""
-        # Remove this entire section - return empty string
-        return ""
-
-    def _create_detailed_findings(self, analysis_results: List[Dict[str, Any]]) -> str:
-        """Create detailed findings section with clean formatting."""
-        sections = ["## 📝 Detailed Analysis\n"]
-        
-        for i, result in enumerate(analysis_results):
-            if result.get("success"):
-                # Clean up the AI response content
-                content = result.get("content", "")
-                cleaned_content = self._clean_ai_response(content)
-                
-                # Add simple section separator
-                if i > 0:  # Don't add separator before first section
-                    sections.append("---\n")
-                
-                sections.append(cleaned_content)
-            else:
-                # Handle failed analyses cleanly
-                chunk_idx = result.get('chunk_index', 'Unknown')
-                if i > 0:
-                    sections.append("---\n")
-                sections.append(f"## ⚠️ Analysis Error - Section {chunk_idx}")
-                sections.append(f"**Status:** Processing failed")
-                sections.append(f"**Error:** {result.get('error', 'Unknown error')}")
-                sections.append("**Action:** Manual review required")
-        
-        return '\n'.join(sections)
-
-    def _create_technical_appendix(self, analysis_results: List[Dict[str, Any]]) -> str:
-        """Create collapsible technical details section."""
-        # Remove technical appendix entirely
-        return ""
-
-    # Helper methods for content parsing and cleaning
-    def _extract_section_name(self, content: str) -> str:
-        """Extract section name from AI response."""
-        lines = content.split('\n')
-        for line in lines[:5]:  # Check first 5 lines
-            if line.startswith('#') and not line.startswith('# 🎯'):
-                return line.strip('# ').strip()
-        return "Unknown Section"
-
-    def _parse_issues_from_content(self, content: str) -> List[Dict]:
-        """Parse issues from AI response content."""
-        # This would need to be implemented based on your AI response format
-        # For now, returning empty list - you'd parse the actual issues here
-        issues = []
-        
-        # Example parsing logic (adapt to your format):
-        if "🔴 CRITICAL" in content:
-            issues.append({"severity": "critical", "summary": "Critical issue detected"})
-        if "🟠 HIGH" in content:
-            issues.append({"severity": "high", "summary": "High priority issue detected"})
-        if "🟡 MEDIUM" in content:
-            issues.append({"severity": "medium", "summary": "Medium priority issue detected"})
-        if "🔵 LOW" in content:
-            issues.append({"severity": "low", "summary": "Low priority issue detected"})
-        
-        return issues
-
-    def _clean_ai_response(self, content: str) -> str:
-        """Clean up AI response for better readability."""
-        lines = content.split('\n')
-        cleaned_lines = []
-        skip_until_issue = False
-        
-        for line in lines:
-            # Skip empty lines at start
-            if not cleaned_lines and not line.strip():
-                continue
-            
-            # Remove ALL language detection and translation content
-            if any(phrase in line.lower() for phrase in [
-                "language detection", "english translation", "the content is in",
-                "言語検出", "英語翻訳", "original text", "translation", 
-                "english translations:", "audit:"
-            ]):
-                skip_until_issue = True
-                continue
-            
-            # Stop skipping when we hit an actual issue
-            if skip_until_issue and ("🔴" in line or "🟠" in line or "🟡" in line or "🔵" in line):
-                skip_until_issue = False
-            
-            # Skip lines while in translation/detection mode
-            if skip_until_issue:
-                continue
-            
-            # Remove summary sections at the end
-            if any(phrase in line.lower() for phrase in [
-                "summary:", "✅ no other issues", "the content is generally",
-                "however, it requires improvements", "audit:", "english translation of the entire section"
-            ]):
-                break
-            
-            # Clean up section headers - remove brackets and make prominent
-            if line.startswith('[') and line.endswith(']'):
-                section_name = line.strip('[]')
-                line = f"## {section_name}"
-            
-            # Convert existing headers
-            elif line.startswith('#') and not line.startswith('##'):
-                if not line.startswith('# 🎯'):  # Keep main report header
-                    line = '##' + line[1:]
-            
-            # Clean up separators
-            if "=" * 10 in line:  # Long separator lines
-                line = "---"
-            elif "-" * 50 in line:  # Medium separator lines  
-                line = "---"
-            
-            cleaned_lines.append(line)
-        
-        # Remove trailing empty lines
-        while cleaned_lines and not cleaned_lines[-1].strip():
-            cleaned_lines.pop()
-        
-        return '\n'.join(cleaned_lines).strip()
-
     def _calculate_final_stats(self, analysis_results: List[Dict[str, Any]], processing_time: float) -> Dict[str, Any]:
-        """Calculate final statistics for the analysis."""
+        """
+        Calculate final statistics for the analysis.
+        
+        Args:
+            analysis_results (list): Analysis results
+            processing_time (float): Total processing time
+            
+        Returns:
+            dict: Statistics dictionary
+        """
         successful_results = [r for r in analysis_results if r.get("success")]
         failed_results = [r for r in analysis_results if not r.get("success")]
         
@@ -440,14 +290,19 @@ class AnalysisEngine:
             "parallel_efficiency": processing_time < (len(analysis_results) * avg_individual_time * 0.5) if avg_individual_time > 0 else True
         }
         
-        # Store stats for use in report
-        self.analysis_stats = stats
-        
         logger.info(f"Final statistics calculated: {format_metrics(stats)}")
         return stats
 
     def _create_error_result(self, error_message: str) -> Dict[str, Any]:
-        """Create a standardized error result."""
+        """
+        Create a standardized error result.
+        
+        Args:
+            error_message (str): Error description
+            
+        Returns:
+            dict: Error result structure
+        """
         processing_time = time.time() - self.analysis_start_time if self.analysis_start_time else 0
         
         return {
@@ -460,7 +315,13 @@ class AnalysisEngine:
         }
 
     def _update_progress(self, message: str, progress: float):
-        """Update progress and notify callback if available."""
+        """
+        Update progress and notify callback if available.
+        
+        Args:
+            message (str): Progress message
+            progress (float): Progress value (0.0 to 1.0)
+        """
         progress_data = {
             "message": message,
             "progress": progress,
@@ -476,7 +337,12 @@ class AnalysisEngine:
                 logger.warning(f"Progress callback error: {str(e)}")
 
     async def validate_setup(self) -> Dict[str, Any]:
-        """Validate that the analysis engine is properly configured."""
+        """
+        Validate that the analysis engine is properly configured.
+        
+        Returns:
+            dict: Validation results
+        """
         logger.info("Validating analysis engine setup")
         
         validation_results = {

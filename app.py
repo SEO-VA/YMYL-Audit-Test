@@ -294,7 +294,7 @@ def process_url_workflow(url: str, debug_mode: bool = False) -> dict:
         with ChunkProcessor(log_callback=log_callback if debug_mode else None) as processor:
             if not debug_mode:
                 if use_simple_logging:
-                    with st.status("Processing content... (this may take a moment)"):
+                    with st.status("You are not waiting, Chunk Norris is waiting for you..."):
                         success, json_output_raw, error = processor.process_content(content)
                         if success:
                             simple_status("Content successfully processed!", "success")
@@ -661,7 +661,7 @@ def main():
             st.session_state["latest_result"] = result
             
             if result["success"]:
-                st.info("✨ Ready for AI compliance analysis!")
+                st.info("✨ Ready for YMYL Analysis!")
             else:
                 display_error_message(result['error'])
     
@@ -716,7 +716,7 @@ def main():
             if st.button("🧹 Clear Stale Results", type="secondary", key="clear_stale_results"):
                 clear_analysis_session_state()
                 st.success("Stale results cleared! Run AI analysis again for fresh results.")
-                st.experimental_rerun()
+
         
         # Display results in tabs
         create_results_tabs(result, ai_result)

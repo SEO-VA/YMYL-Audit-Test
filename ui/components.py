@@ -842,7 +842,7 @@ def _create_individual_analyses_tab(ai_result: Dict[str, Any]):
         chunk_idx = detail.get('chunk_index', 'Unknown')
         if detail.get('success'):
             # Convert JSON to readable format
-            readable_content = convert_violations_json_to_readable(detail['content'])
+            readable_content = convert_violations_json_to_readable(result["content"])
             
             with st.expander(f"✅ Chunk {chunk_idx} Analysis (Success)"):
                 # Tab structure: Readable + Raw

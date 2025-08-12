@@ -110,7 +110,7 @@ class AnalysisEngine:
         
         for i, result in enumerate(analysis_results, 1):
             if result.get("success"):
-                readable_content = convert_violations_json_to_readable(result["content"], f"Section {i}")
+                readable_content = convert_violations_json_to_readable(result["content"])
                 report += f"{readable_content}---\n\n"
             else:
                 report += f"## Section {i}\n\n❌ **Analysis failed:** {result.get('error', 'Unknown error')}\n\n---\n\n"

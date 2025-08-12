@@ -661,7 +661,6 @@ def main():
             st.session_state["latest_result"] = result
             
             if result["success"]:
-                display_success_message(success_message)
                 st.info("✨ Ready for AI compliance analysis!")
             else:
                 display_error_message(result['error'])

@@ -231,71 +231,80 @@ def process_url_workflow(url: str, debug_mode: bool = False) -> dict:
             if cleared_count > 0:
                 st.info(f"🧹 Cleared previous analysis data for fresh start ({cleared_count} items)")
         
-                # Setup logging based on mode
-            if debug_mode:
-                log_placeholder = st.empty()
-                log_callback = create_debug_logger(log_placeholder)
-                use_simple_logging = False
-            else:
-                # Use simple status for normal users
-                simple_status = create_simple_status_updater()
-                use_simple_logging = True
-        
-        # Create a dummy log_callback for backward compatibility
-        def log_callback(message):
-            # Extract meaningful parts from technical messages
-            if "Initializing content extractor" in message:
-                simple_status("Connecting to website...", "info")
-            elif "Fetching and extracting content" in message:
-                simple_status("Reading webpage content...", "info")
-            elif "Content extracted" in message:
-                simple_status("Content successfully extracted", "success")
-            elif "Initializing chunk processor" in message:
-                simple_status("Processing content into sections...", "info")
-            elif "workflow complete" in message:
-                simple_status("Content ready for AI analysis!", "success")
-            # For debug mode, we still want to see some messages
-            elif debug_mode:
-                # Keep original technical logging in debug mode
-                pass
+        # Setup logging based on mode
+        if debug_mode:
+            log_placeholder = st.empty()
+            log_callback = create_debug_logger(log_placeholder)
+            use_simple_logging = False
+        else:
+            # Use simple status for normal users
+            simple_status = create_simple_status_updater()
+            use_simple_logging = True
+            
+            # Create a dummy log_callback for backward compatibility
+            def log_callback(message):
+                # Extract meaningful parts from technical messages
+                if "Initializing content extractor" in message:
+                    simple_status("Connecting to website...", "info")
+                elif "Fetching and extracting content" in message:
+                    simple_status("Reading webpage content...", "info")
+                elif "Content extracted" in message:
+                    simple_status("Content successfully extracted", "success")
+                elif "Initializing chunk processor" in message:
+                    simple_status("Processing content into sections...", "info")
+                elif "workflow complete" in message:
+                    simple_status("Content ready for AI analysis!", "success")
+                # For debug mode, we still want to see some messages
+                elif debug_mode:
+                    # Keep original technical logging in debug mode
+                    pass
         
         # Step 1: Content Extraction
-    if use_simple_logging:
-        simple_status("Connecting to website...", "info")
-    else:
-        log_callback("🚀 Initializing content extractor...")
-        
-    with ContentExtractor() as extractor:
         if use_simple_logging:
-            simple_status("Reading webpage content...", "info")
+            simple_status("Connecting to website...", "info")
         else:
-            log_callback(f"🔍 Fetching and extracting content from: {url}")
-        
-        # Step 2: Chunk Processing
-    if use_simple_logging:
-        simple_status("Processing content into sections...", "info")
-    else:
-        log_callback("🤖 Initializing chunk processor...")
+            log_callback("🚀 Initializing content extractor...")
+            
+        with ContentExtractor() as extractor:
+            if use_simple_logging:
+                simple_status("Reading webpage content...", "info")
+            else:
+                log_callback(f"🔍 Fetching and extracting content from: {url}")
+            
+            success, content, error = extractor.extract_content(url)
+            
             if not success:
                 error_msg = f"Content extraction failed: {error}"
                 result['error'] = error_msg
                 if use_simple_logging:
                     simple_status("Couldn't extract content from website", "error")
                 return result
-        
-    with ChunkProcessor(log_callback=log_callback if debug_mode else None) as processor:
-        if not debug_mode:
-            if use_simple_logging:
-                with st.status("Processing content... (this may take a moment)"):
-                    success, json_output_raw, error = processor.process_content(content)
-                    if success:
-                        simple_status("Content successfully processed!", "success")
-            else:
-                with st.status("You are not waiting, Chunk Norris is waiting for you"):
-                    success, json_output_raw, error = processor.process_content(content)
-        else:
-            success, json_output_raw, error = processor.process_content(content)
             
+            result['extracted_content'] = content
+            if use_simple_logging:
+                simple_status("Content successfully extracted", "success")
+            else:
+                log_callback(f"✅ Content extracted: {len(content):,} characters")
+        
+        # Step 2: Chunk Processing
+        if use_simple_logging:
+            simple_status("Processing content into sections...", "info")
+        else:
+            log_callback("🤖 Initializing chunk processor...")
+            
+        with ChunkProcessor(log_callback=log_callback if debug_mode else None) as processor:
+            if not debug_mode:
+                if use_simple_logging:
+                    with st.status("Processing content... (this may take a moment)"):
+                        success, json_output_raw, error = processor.process_content(content)
+                        if success:
+                            simple_status("Content successfully processed!", "success")
+                else:
+                    with st.status("You are not waiting, Chunk Norris is waiting for you"):
+                        success, json_output_raw, error = processor.process_content(content)
+            else:
+                success, json_output_raw, error = processor.process_content(content)
+                
             if not success:
                 error_msg = f"Chunk processing failed: {error}"
                 result['error'] = error_msg
@@ -308,9 +317,9 @@ def process_url_workflow(url: str, debug_mode: bool = False) -> dict:
             result['json_output'] = parse_json_output(json_output_raw)  # Parsed dict for AI
             
             if use_simple_logging:
-            simple_status("Content ready for AI analysis!", "success")
-        else:
-            log_callback("🎉 URL workflow complete!")
+                simple_status("Content ready for AI analysis!", "success")
+            else:
+                log_callback("🎉 URL workflow complete!")
         
         # Store processing timestamp and mode
         result['processing_timestamp'] = st.session_state.get('processing_timestamp', 0)
@@ -363,30 +372,30 @@ def process_direct_json_workflow(json_content: str, debug_mode: bool = False) ->
                 st.info(f"🧹 Cleared previous analysis data for fresh start ({cleared_count} items)")
         
         # Setup logging based on mode
-    if debug_mode:
-        log_placeholder = st.empty()
-        log_callback = create_debug_logger(log_placeholder)
-        use_simple_logging = False
-    else:
-        # Use simple status for normal users
-        simple_status = create_simple_status_updater()
-        use_simple_logging = True
-        
-        # Create a dummy log_callback for backward compatibility
-        def log_callback(message):
-            if "Validating and processing JSON" in message:
-                simple_status("Checking JSON format...", "info")
-            elif "Decoding Unicode escapes" in message:
-                simple_status("Processing text content...", "info")
-            elif "workflow complete" in message:
-                simple_status("JSON content ready for analysis!", "success")
+        if debug_mode:
+            log_placeholder = st.empty()
+            log_callback = create_debug_logger(log_placeholder)
+            use_simple_logging = False
+        else:
+            # Use simple status for normal users
+            simple_status = create_simple_status_updater()
+            use_simple_logging = True
+            
+            # Create a dummy log_callback for backward compatibility
+            def log_callback(message):
+                if "Validating and processing JSON" in message:
+                    simple_status("Checking JSON format...", "info")
+                elif "Decoding Unicode escapes" in message:
+                    simple_status("Processing text content...", "info")
+                elif "workflow complete" in message:
+                    simple_status("JSON content ready for analysis!", "success")
         
         # Basic validation
-    if use_simple_logging:
-        simple_status("Checking JSON format...", "info")
-    else:
-        log_callback("📋 Validating and processing JSON input...")
-        
+        if use_simple_logging:
+            simple_status("Checking JSON format...", "info")
+        else:
+            log_callback("📋 Validating and processing JSON input...")
+            
         if not json_content.strip():
             error_msg = "Please provide JSON content"
             result['error'] = error_msg
@@ -395,10 +404,10 @@ def process_direct_json_workflow(json_content: str, debug_mode: bool = False) ->
             return result
         
         # FIXED: Apply Unicode decoding to direct input
-    if use_simple_logging:
-        simple_status("Processing text content...", "info")
-    else:
-        log_callback("🔤 Decoding Unicode escapes in JSON content...")
+        if use_simple_logging:
+            simple_status("Processing text content...", "info")
+        else:
+            log_callback("🔤 Decoding Unicode escapes in JSON content...")
         decoded_json_content = decode_unicode_escapes(json_content)
         
         # Try to parse JSON to check basic validity
@@ -426,7 +435,8 @@ def process_direct_json_workflow(json_content: str, debug_mode: bool = False) ->
                 result['error'] = "'big_chunks' must be a non-empty array"
                 return result
             
-            log_callback(f"✅ Valid JSON with {len(big_chunks)} chunks detected")
+            if not use_simple_logging:
+                log_callback(f"✅ Valid JSON with {len(big_chunks)} chunks detected")
             
         except json.JSONDecodeError as e:
             result['error'] = f"Invalid JSON format: {str(e)}"
@@ -437,9 +447,9 @@ def process_direct_json_workflow(json_content: str, debug_mode: bool = False) ->
         result['json_output'] = parsed_json  # Parsed dict for AI processing
         
         if use_simple_logging:
-        simple_status("JSON content ready for analysis!", "success")
-    else:
-        log_callback("🎉 Direct JSON workflow complete!")
+            simple_status("JSON content ready for analysis!", "success")
+        else:
+            log_callback("🎉 Direct JSON workflow complete!")
         
         result['success'] = True
         logger.info(f"Direct JSON workflow completed successfully ({len(big_chunks)} chunks)")

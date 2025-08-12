@@ -660,9 +660,7 @@ def main():
             # Store result
             st.session_state["latest_result"] = result
             
-            if result["success"]:
-                st.info("✨ Ready for YMYL Analysis!")
-            else:
+            if not result["success"]:
                 display_error_message(result['error'])
     
     with col2:

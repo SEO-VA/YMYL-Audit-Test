@@ -815,16 +815,16 @@ def _create_download_buttons(formats: Dict[str, bytes]):
                 st.write("Please refresh the page to access downloads.")
 
 def _create_individual_analyses_tab(ai_result: Dict[str, Any]):
-    """Create individual analyses tab with JSON violations converted to readable format."""
+    """Create individual analyses tab with both readable format and raw AI output."""
     
-    from utils.json_utils import convert_violations_json_to_readable  # Import the helper
+    from utils.json_utils import convert_violations_json_to_readable
     
     st.markdown("### Individual Chunk Analysis Results")
     
     analysis_details = ai_result.get('analysis_results', [])
     stats = ai_result.get('statistics', {})
     
-    # Processing metrics (unchanged)
+    # Processing metrics
     col1, col2, col3, col4 = st.columns(4)
     with col1:
         st.metric("Processing Time", f"{stats.get('total_processing_time', 0):.2f}s")
@@ -837,7 +837,7 @@ def _create_individual_analyses_tab(ai_result: Dict[str, Any]):
     
     st.markdown("---")
     
-    # Individual results - UPDATED to convert JSON
+    # Individual results with both readable and raw formats
     for detail in analysis_details:
         chunk_idx = detail.get('chunk_index', 'Unknown')
         if detail.get('success'):
@@ -845,12 +845,38 @@ def _create_individual_analyses_tab(ai_result: Dict[str, Any]):
             readable_content = convert_violations_json_to_readable(detail['content'])
             
             with st.expander(f"✅ Chunk {chunk_idx} Analysis (Success)"):
-                st.markdown(readable_content)
-                if 'processing_time' in detail:
-                    st.caption(f"Processing time: {detail['processing_time']:.2f}s")
+                # Tab structure: Readable + Raw
+                tab1, tab2 = st.tabs(["📖 Readable Format", "🔧 Raw AI Output"])
+                
+                with tab1:
+                    st.markdown("**Human-Readable Violations:**")
+                    st.markdown(readable_content)
+                
+                with tab2:
+                    st.markdown("**Raw AI Response (for prompt debugging):**")
+                    st.code(detail['content'], language='json')
+                    
+                    # Additional debug info
+                    st.markdown("**Debug Information:**")
+                    col_a, col_b = st.columns(2)
+                    with col_a:
+                        st.write(f"**Response Length:** {len(detail['content']):,} characters")
+                        st.write(f"**Processing Time:** {detail.get('processing_time', 0):.2f}s")
+                    with col_b:
+                        try:
+                            parsed = json.loads(detail['content'])
+                            violation_count = len(parsed.get('violations', []))
+                            st.write(f"**Violations Found:** {violation_count}")
+                            st.write(f"**Valid JSON:** ✅ Yes")
+                        except:
+                            st.write(f"**Violations Found:** ❌ Parse Error")
+                            st.write(f"**Valid JSON:** ❌ No")
+                
         else:
             with st.expander(f"❌ Chunk {chunk_idx} Analysis (Failed)"):
                 st.error(f"Error: {detail.get('error', 'Unknown error')}")
+                if 'processing_time' in detail:
+                    st.caption(f"Processing time: {detail['processing_time']:.2f}s")
 
 def _create_json_tab(result: Dict[str, Any]):
     """

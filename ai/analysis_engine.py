@@ -176,11 +176,14 @@ class AnalysisEngine:
     def _create_final_report(self, analysis_results: List[Dict[str, Any]], chunks: List[Dict[str, Any]]) -> str:
         """Create the final YMYL compliance report with proper section formatting."""
         
-        # Keep your existing header exactly the same
+        # Your existing header
         header = f"""# YMYL Compliance Audit Report
     **Audit Date:** {audit_date}
-    ...
+    **Content Type:** Online Casino/Gambling  
+    **Analysis Method:** Section-by-section E-E-A-T compliance review
+
     ---
+
     """
         
         report_parts = [header]
@@ -189,20 +192,49 @@ class AnalysisEngine:
             if result.get("success"):
                 content = result["content"]
                 
-                # SIMPLE: Just add ## before the first line if it's not already there
+                # Extract section name from [Section Name] format
                 lines = content.strip().split('\n')
-                if lines and not lines[0].startswith('#'):
-                    # Make first line a proper section header
-                    section_header = f"## {lines[0]}"
-                    content = '\n'.join([section_header] + lines[1:])
+                section_name = ""
                 
-                report_parts.append(content)
-                report_parts.append("\n---\n")  # Keep your existing separator
+                # Find the section name line
+                for line in lines:
+                    if line.strip().startswith('[Section Name]'):
+                        section_name = line.replace('[Section Name]', '').strip()
+                        break
+                
+                if section_name:
+                    # Create clean section with proper header
+                    clean_content = f"## {section_name}\n\n"
+                    
+                    # Add everything after the section name, skipping language detection
+                    in_content = False
+                    for line in lines:
+                        if line.strip().startswith('🔴') or line.strip().startswith('🟠') or \
+                        line.strip().startswith('🟡') or line.strip().startswith('🔵') or \
+                        line.strip().startswith('✅'):
+                            in_content = True
+                        
+                        if in_content:
+                            clean_content += line + '\n'
+                    
+                    report_parts.append(clean_content)
+                else:
+                    # Fallback: use content as-is
+                    report_parts.append(content)
+                
+                report_parts.append("\n---\n")
+                
             else:
-                # Keep your existing error handling
+                # Your existing error handling
+                chunk_idx = result.get('chunk_index', 'Unknown')
+                error_section = f"""## Analysis Error for Chunk {chunk_idx}
+    ❌ **Processing Failed**
+    **Error:** {result.get('error', 'Unknown error')}
+    ---
+    """
                 report_parts.append(error_section)
         
-        # Keep your existing summary
+        # Your existing summary
         report_parts.append(summary)
         return ''.join(report_parts)
 

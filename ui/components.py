@@ -157,7 +157,6 @@ def create_sidebar_config(debug_mode_default: bool = True) -> Dict[str, Any]:
             for key in keys_to_clear:
                 del st.session_state[key]
             st.success(f"Cleared {len(keys_to_clear)} session keys")
-            st.experimental_rerun()
     # API Key configuration
     st.sidebar.markdown("### 🔑 AI Analysis Configuration")
     # Try to get API key from secrets first

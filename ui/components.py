@@ -363,10 +363,6 @@ def create_ai_analysis_section(api_key: Optional[str], json_output: Any, source_
             chunk_count = len(data.get('big_chunks', []))
             col1, col2 = st.columns([2, 1])
             with col2:
-                if input_mode == "🌐 URL Input":
-                    st.write(f"📊 **Content Ready**: {chunk_count} chunks extracted from URL")
-                else:
-                    st.write(f"📊 **Content Ready**: {chunk_count} chunks provided directly")
                 # Check for existing AI results
                 ai_result = st.session_state.get('ai_analysis_result')
                 if ai_result and ai_result.get('success'):

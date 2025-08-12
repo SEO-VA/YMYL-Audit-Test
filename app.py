@@ -586,11 +586,11 @@ async def process_ai_analysis(json_output: str, api_key: str, source_result: dic
             if results['success']:
                 stats = results.get('statistics', {})
                 processing_time = results.get('processing_time', 0)
-                    
-                    if input_mode == 'url':
-                        st.success(f"✅ AI analysis completed for URL content in {processing_time:.2f} seconds")
-                    else:
-                        st.success(f"✅ AI analysis completed for direct JSON input in {processing_time:.2f} seconds")
+                
+            if input_mode == 'url':
+                st.success(f"✅ AI analysis completed for URL content in {processing_time:.2f} seconds")
+            else:
+                st.success(f"✅ AI analysis completed for direct JSON input in {processing_time:.2f} seconds")
             else:
                 st.error(f"❌ Analysis failed: {results.get('error', 'Unknown error')}")
         

@@ -372,6 +372,56 @@ def get_chunk_statistics(json_data: Dict[str, Any]) -> Dict[str, Any]:
         }
 
 
+def convert_violations_json_to_readable(json_content: str) -> str:
+    """
+    ✅ MAIN FUNCTION: Convert JSON violations format to human-readable markdown.
+    THIS IS THE COMPLETE VERSION WITH "Translation of Fix" FIELD
+    
+    Args:
+        json_content (str): JSON string with violations
+        
+    Returns:
+        str: Human-readable markdown format
+    """
+    try:
+        violations_data = json.loads(json_content)
+        violations = violations_data.get("violations", [])
+        
+        if not violations:
+            return "✅ **No violations found in this section.**\n\n"
+        
+        readable_parts = []
+        
+        for i, violation in enumerate(violations, 1):
+            severity_emoji = {
+                "critical": "🔴",
+                "medium": "🟡", 
+                "low": "🔵"
+            }.get(violation.get("severity", "medium"), "🟡")
+            
+            violation_text = f"""**{severity_emoji} Violation {i}**
+- **Issue:** {violation.get('violation_type', 'Unknown violation')}
+- **Problematic Text:** "{violation.get('problematic_text', 'N/A')}"
+- **Translation:** "{violation.get('translation', 'N/A')}"
+- **Guideline Reference:** Section {violation.get('guideline_section', 'N/A')} (Page {violation.get('page_number', 'N/A')})
+- **Severity:** {violation.get('severity', 'medium').title()}
+- **Suggested Fix:** "{violation.get('suggested_rewrite', 'No suggestion provided')}"
+- **Translation of Fix:** "{violation.get('rewrite_translation', 'N/A')}"
+
+"""
+            readable_parts.append(violation_text)
+        
+        return ''.join(readable_parts)
+        
+    except json.JSONDecodeError:
+        # Fallback: return original content if not JSON
+        logger.warning("Content is not valid JSON, returning as-is")
+        return json_content
+    except Exception as e:
+        logger.error(f"Error converting JSON to readable format: {e}")
+        return f"Error processing violations: {str(e)}\n\n"
+
+
 def compare_json_content(json1: str, json2: str) -> Dict[str, Any]:
     """
     Compare two JSON content strings for differences.
@@ -578,39 +628,6 @@ def get_content_summary(json_data: Dict[str, Any]) -> Dict[str, Any]:
             'error': str(e)
         }
 
-def convert_violations_json_to_readable(json_content: str) -> str:
-    """Convert JSON violations to readable markdown."""
-    try:
-        data = json.loads(json_content)
-        violations = data.get("violations", [])
-        
-        if not violations:
-            return "✅ **No violations found.**\n\n"
-        
-        result = ""
-        for i, violation in enumerate(violations, 1):
-            emoji = {"critical": "🔴", "medium": "🟡", "low": "🔵"}.get(violation.get("severity", "medium"), "🟡")
-            result += f"""**{emoji} Violation {i}**
-- **Issue:** {violation.get('violation_type', 'Unknown')}
-- **Text:** "{violation.get('problematic_text', 'N/A')}"
-- **Translation:** "{violation.get('translation', 'N/A')}"
-- **Reference:** Section {violation.get('guideline_section', 'N/A')} (Page {violation.get('page_number', 'N/A')})
-- **Severity:** {violation.get('severity', 'medium').title()}
-- **Fix:** "{violation.get('suggested_rewrite', 'No suggestion')}"
-- **Translation of Fix:** "{violation.get('rewrite_translation', 'N/A')}"
-
-"""
-        return result
-    except:
-        return json_content + "\n\n"
-        
-    except json.JSONDecodeError:
-        # Fallback: return original content if not JSON
-        logger.warning("Content is not valid JSON, returning as-is")
-        return json_content
-    except Exception as e:
-        logger.error(f"Error converting JSON to readable format: {e}")
-        return f"Error processing violations: {str(e)}\n\n"
 
 # FIXED: Enhanced exports for better module interface
 __all__ = [

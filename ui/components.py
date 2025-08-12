@@ -19,8 +19,6 @@ from utils.logging_utils import log_with_timestamp
 from utils.json_utils import get_display_json_string  # FIXED: Import centralized display function
 from exporters.export_manager import ExportManager
 
-# FIXED: Removed duplicate decode_unicode_escapes - now using centralized version from json_utils
-
 def create_page_header():
     """Create the main page header with title and description."""
     st.title("🕵 YMYL Audit Tool")
@@ -841,8 +839,8 @@ def _create_individual_analyses_tab(ai_result: Dict[str, Any]):
     for detail in analysis_details:
         chunk_idx = detail.get('chunk_index', 'Unknown')
         if detail.get('success'):
-            # Convert JSON to readable format
-            readable_content = convert_violations_json_to_readable(detail['content'])
+            # ✅ FIXED: Using 'detail' instead of 'result'
+            readable_content = convert_violations_json_to_readable(detail["content"])
             
             with st.expander(f"✅ Chunk {chunk_idx} Analysis (Success)"):
                 # Tab structure: Readable + Raw
@@ -864,6 +862,7 @@ def _create_individual_analyses_tab(ai_result: Dict[str, Any]):
                         st.write(f"**Processing Time:** {detail.get('processing_time', 0):.2f}s")
                     with col_b:
                         try:
+                            import json
                             parsed = json.loads(detail['content'])
                             violation_count = len(parsed.get('violations', []))
                             st.write(f"**Violations Found:** {violation_count}")

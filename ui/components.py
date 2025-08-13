@@ -521,7 +521,7 @@ def _create_ai_report_tab(ai_result: Dict[str, Any], content_result: Optional[Di
     with st.expander("📝 View Raw Markdown"):
         st.code(ai_report, language='markdown')
 
-def _create_download_buttons(formats: Dict[str, bytes], ai_report: str = None):
+    def _create_download_buttons(formats: Dict[str, bytes], ai_report: str = None):
     """
     Create download buttons for different formats with XLSX button as first option.
     UPDATED: Replaced copy button with XLSX download button

@@ -388,7 +388,6 @@ def get_export_config():
         dict: Export configuration
     """
     return {
-        'default_format': DEFAULT_EXPORT_FORMAT,
         'supported_formats': SUPPORTED_EXPORT_FORMATS,
         'filename_pattern': EXPORT_CONFIG.get('FILENAME_PATTERN', 'ymyl_compliance_report_{timestamp}'),
         'google_docs_compatible': EXPORT_CONFIG.get('GOOGLE_DOCS_COMPATIBLE', True),

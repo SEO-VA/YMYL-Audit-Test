@@ -479,11 +479,12 @@ def create_results_tabs(result: Dict[str, Any], ai_result: Optional[Dict[str, An
         with tab3:
             _create_summary_tab(result)
 
+
 def _create_ai_report_tab(ai_result: Dict[str, Any], content_result: Optional[Dict[str, Any]] = None):
     """
     Create AI compliance report tab content.
     UPDATED: Restructured layout with copy functionality and downloads at top
-    NEW: Added HTML preview expander that renders exactly like the downloaded HTML
+    NEW: Added HTML preview that looks exactly like Streamlit's "View Formatted Report"
     """
     import streamlit.components.v1 as components
     from exporters.html_exporter import HTMLExporter
@@ -528,20 +529,256 @@ def _create_ai_report_tab(ai_result: Dict[str, Any], content_result: Optional[Di
     with st.expander("📝 View Raw Markdown"):
         st.code(ai_report, language='markdown')
     
-    # NEW: HTML Preview - exactly as it would appear in browser
+    # NEW: HTML Preview - styled to look exactly like Streamlit's markdown rendering
     with st.expander("🌐 Preview HTML Report"):
         try:
-            # Generate HTML using the same exporter as downloads
-            html_exporter = HTMLExporter()
-            html_bytes = html_exporter.convert(ai_report, "YMYL Compliance Audit Report")
-            html_string = html_bytes.decode('utf-8')
+            # Convert markdown to HTML with Streamlit-like styling
+            streamlit_styled_html = _convert_markdown_to_streamlit_html(ai_report)
             
-            # Render the HTML exactly as it would appear in browser
-            components.html(html_string, height=600, scrolling=True)
+            # Render the HTML with Streamlit-like appearance
+            components.html(streamlit_styled_html, height=600, scrolling=True)
             
         except Exception as e:
             st.error(f"Error generating HTML preview: {e}")
             st.info("HTML preview unavailable, but you can still download the HTML file above.")
+
+
+def _convert_markdown_to_streamlit_html(markdown_content: str) -> str:
+    """
+    Convert markdown to HTML with styling that matches Streamlit's appearance exactly.
+    
+    Args:
+        markdown_content (str): Markdown content to convert
+        
+    Returns:
+        str: HTML with Streamlit-like styling
+    """
+    import markdown
+    
+    try:
+        # Convert markdown to HTML
+        html_content = markdown.markdown(
+            markdown_content, 
+            extensions=['tables', 'toc', 'codehilite', 'fenced_code']
+        )
+        
+        # Apply Streamlit-like styling
+        streamlit_html = f"""
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>YMYL Compliance Report</title>
+    <style>
+        /* Streamlit-like styling to match "View Formatted Report" exactly */
+        body {{
+            font-family: "Source Sans Pro", sans-serif;
+            background-color: #ffffff;
+            color: #262730;
+            line-height: 1.6;
+            margin: 0;
+            padding: 20px;
+            font-size: 14px;
+        }}
+        
+        /* Headers - match Streamlit's header styling */
+        h1 {{
+            color: #262730;
+            font-size: 2.25rem;
+            font-weight: 600;
+            margin-bottom: 1rem;
+            margin-top: 0;
+            line-height: 1.2;
+        }}
+        
+        h2 {{
+            color: #262730;
+            font-size: 1.75rem;
+            font-weight: 600;
+            margin-bottom: 0.5rem;
+            margin-top: 2rem;
+            line-height: 1.2;
+        }}
+        
+        h3 {{
+            color: #262730;
+            font-size: 1.25rem;
+            font-weight: 600;
+            margin-bottom: 0.5rem;
+            margin-top: 1.5rem;
+            line-height: 1.2;
+        }}
+        
+        h4, h5, h6 {{
+            color: #262730;
+            font-weight: 600;
+            margin-bottom: 0.5rem;
+            margin-top: 1rem;
+            line-height: 1.2;
+        }}
+        
+        /* Paragraphs */
+        p {{
+            margin-bottom: 1rem;
+            color: #262730;
+        }}
+        
+        /* Severity indicators - match Streamlit emoji rendering */
+        .severity-critical, 
+        span:contains("🔴") {{
+            color: #ff4b4b;
+            font-weight: 600;
+        }}
+        
+        .severity-high,
+        span:contains("🟠") {{
+            color: #ff8700;
+            font-weight: 600;
+        }}
+        
+        .severity-medium,
+        span:contains("🟡") {{
+            color: #ffcd00;
+            font-weight: 600;
+        }}
+        
+        .severity-low,
+        span:contains("🔵") {{
+            color: #1f77b4;
+            font-weight: 600;
+        }}
+        
+        /* Lists - match Streamlit's list styling */
+        ul, ol {{
+            margin-bottom: 1rem;
+            padding-left: 1.5rem;
+        }}
+        
+        li {{
+            margin-bottom: 0.25rem;
+            color: #262730;
+        }}
+        
+        /* Bold text */
+        strong, b {{
+            font-weight: 600;
+            color: #262730;
+        }}
+        
+        /* Code blocks - match Streamlit's code styling */
+        code {{
+            background-color: #f0f2f6;
+            border: 1px solid #e6eaf1;
+            border-radius: 0.25rem;
+            color: #262730;
+            font-family: "Source Code Pro", monospace;
+            font-size: 0.875rem;
+            padding: 0.125rem 0.25rem;
+        }}
+        
+        pre {{
+            background-color: #f0f2f6;
+            border: 1px solid #e6eaf1;
+            border-radius: 0.25rem;
+            color: #262730;
+            font-family: "Source Code Pro", monospace;
+            font-size: 0.875rem;
+            margin-bottom: 1rem;
+            overflow-x: auto;
+            padding: 0.75rem;
+        }}
+        
+        pre code {{
+            background-color: transparent;
+            border: none;
+            padding: 0;
+        }}
+        
+        /* Tables - match Streamlit's table styling */
+        table {{
+            border-collapse: collapse;
+            margin-bottom: 1rem;
+            width: 100%;
+        }}
+        
+        th, td {{
+            border: 1px solid #e6eaf1;
+            padding: 0.5rem;
+            text-align: left;
+        }}
+        
+        th {{
+            background-color: #f0f2f6;
+            font-weight: 600;
+        }}
+        
+        /* Horizontal rules */
+        hr {{
+            border: none;
+            border-top: 1px solid #e6eaf1;
+            margin: 2rem 0;
+        }}
+        
+        /* Blockquotes */
+        blockquote {{
+            border-left: 0.25rem solid #e6eaf1;
+            color: #6c757d;
+            font-style: italic;
+            margin-bottom: 1rem;
+            padding-left: 1rem;
+        }}
+        
+        /* Links */
+        a {{
+            color: #ff4b4b;
+            text-decoration: none;
+        }}
+        
+        a:hover {{
+            text-decoration: underline;
+        }}
+        
+        /* Ensure emojis display properly */
+        .emoji {{
+            font-style: normal;
+            font-variant: normal;
+            font-weight: normal;
+            line-height: 1;
+        }}
+        
+        /* Special styling for violation indicators */
+        p:contains("🔴"), p:contains("🟠"), p:contains("🟡"), p:contains("🔵") {{
+            margin-left: 1rem;
+            padding: 0.5rem;
+            border-left: 3px solid #e6eaf1;
+            background-color: #fafafa;
+        }}
+    </style>
+</head>
+<body>
+    {html_content}
+</body>
+</html>"""
+        
+        return streamlit_html
+        
+    except Exception as e:
+        # Fallback to simple HTML if conversion fails
+        return f"""
+<!DOCTYPE html>
+<html>
+<head>
+    <style>
+        body {{ font-family: "Source Sans Pro", sans-serif; padding: 20px; }}
+    </style>
+</head>
+<body>
+    <h2>HTML Preview Error</h2>
+    <p>Could not generate HTML preview: {str(e)}</p>
+    <pre>{markdown_content}</pre>
+</body>
+</html>"""
 
 def _create_download_buttons(formats: Dict[str, bytes], ai_report: str = None):
     """

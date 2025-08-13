@@ -663,7 +663,7 @@ def main():
         st.subheader("📊 Results")
         
         # FIXED: Pass the parsed JSON dict for AI analysis
-        json_for_ai = result['json_output']  # This is the parsed dict
+        json_for_ai = result['json_output_raw']  # This is the parsed dict
         
         # AI Analysis button and processing
         if create_ai_analysis_section(api_key, json_for_ai, result):

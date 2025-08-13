@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """
 UI Components for YMYL Audit Tool
-Updated to support three input modes: URL, Direct JSON, and Raw Content
+Reusable Streamlit UI components for the application interface.
+UPDATED: Added Raw Content input mode support (three total modes)
 """
 import streamlit_js_eval as st_js
 import streamlit as st
@@ -13,6 +14,183 @@ from config.settings import DEFAULT_TIMEZONE
 from utils.logging_utils import log_with_timestamp
 from utils.json_utils import get_display_json_string
 from exporters.word_exporter import WordExporter
+
+def create_page_header():
+    """Create the main page header with title and description."""
+    st.title("🕵 YMYL Audit Tool")
+    st.markdown("**Automatically extract content from websites, generate JSON chunks, and perform YMYL compliance analysis**")
+    st.markdown("---")
+
+def create_user_friendly_log_recap():
+    """Create a consolidated, user-friendly log recap for normal users."""
+    # Check if we have any processing history in session state
+    log_entries = []
+    
+    # Collect content processing logs
+    if 'latest_result' in st.session_state:
+        result = st.session_state['latest_result']
+        if result.get('success'):
+            input_mode = result.get('input_mode', 'url')
+            if input_mode == 'url':
+                log_entries.append({
+                    'step': 'Content Extraction',
+                    'status': 'completed',
+                    'details': f"Successfully extracted content from {result.get('url', 'URL')}",
+                    'data': f"{len(result.get('extracted_content', '')):,} characters extracted"
+                })
+            elif input_mode == 'direct_json':
+                log_entries.append({
+                    'step': 'JSON Input Processing', 
+                    'status': 'completed',
+                    'details': "Direct JSON content validated and processed",
+                    'data': "Content ready for analysis"
+                })
+            elif input_mode == 'raw_content':
+                log_entries.append({
+                    'step': 'Content Chunking', 
+                    'status': 'completed',
+                    'details': "Raw content chunked using Dejan service",
+                    'data': f"Content processed into structured chunks"
+                })
+    
+    # Collect AI analysis logs
+    if 'ai_analysis_result' in st.session_state:
+        ai_result = st.session_state['ai_analysis_result']
+        if ai_result.get('success'):
+            stats = ai_result.get('statistics', {})
+            processing_time = ai_result.get('processing_time', 0)
+            log_entries.append({
+                'step': 'AI Compliance Analysis',
+                'status': 'completed', 
+                'details': f"Analyzed {stats.get('total_chunks', 0)} content sections",
+                'data': f"Completed in {processing_time:.1f} seconds with {stats.get('success_rate', 0):.0f}% success rate"
+            })
+    
+    # Display the recap
+    if log_entries:
+        st.subheader("📋 Processing Summary")
+        st.info("Here's what happened during your analysis:")
+        
+        for i, entry in enumerate(log_entries, 1):
+            status_icon = "✅" if entry['status'] == 'completed' else "⏳"
+            with st.expander(f"{status_icon} Step {i}: {entry['step']}", expanded=True):
+                st.write(f"**What happened:** {entry['details']}")
+                st.write(f"**Result:** {entry['data']}")
+                # Add helpful next steps
+                if entry['step'] in ['Content Extraction', 'Content Chunking', 'JSON Input Processing']:
+                    st.caption("💡 Next: Run AI analysis to check for YMYL compliance issues")
+                elif entry['step'] == 'AI Compliance Analysis':
+                    st.caption("💡 View your report in the 'AI Compliance Report' tab above")
+    else:
+        st.info("🚀 Ready to start! Choose your input method above and begin processing.")
+
+def track_user_error(error_type, error_message, context=""):
+    """Track errors for user-friendly display later."""
+    if 'user_error_history' not in st.session_state:
+        st.session_state['user_error_history'] = []
+    error_entry = {
+        'timestamp': datetime.now().strftime('%H:%M:%S'),
+        'type': error_type,
+        'message': error_message,
+        'context': context,
+        'user_friendly': _make_error_user_friendly(error_type, error_message)
+    }
+    st.session_state['user_error_history'].append(error_entry)
+    # Keep only last 5 errors
+    if len(st.session_state['user_error_history']) > 5:
+        st.session_state['user_error_history'].pop(0)
+
+def _make_error_user_friendly(error_type, error_message):
+    """Convert technical errors to user-friendly messages."""
+    friendly_messages = {
+        'timeout': "The website took too long to respond. Try again or check if the URL is working.",
+        'connection': "Couldn't connect to the website. Check your internet connection and the URL.",
+        'json': "The content format isn't quite right. Please check your JSON input.",
+        'api': "There was an issue with the AI analysis service. Please try again in a moment.",
+        'parsing': "Had trouble understanding the content format. Please verify your input.",
+        'chunking': "Had trouble processing your content into chunks. Please try again or check the content format.",
+    }
+    # Try to match error type
+    for key, friendly_msg in friendly_messages.items():
+        if key in error_type.lower() or key in error_message.lower():
+            return friendly_msg
+    # Default friendly message
+    return "Something went wrong, but you can try again. If the problem continues, the issue might be temporary."
+
+def create_simple_status_updater():
+    """Create a simple status updater that shows one clear message at a time."""
+    if 'simple_status_container' not in st.session_state:
+        st.session_state['simple_status_container'] = st.empty()
+    
+    def update_simple_status(message, status_type="info"):
+        """Update the simple status display."""
+        container = st.session_state['simple_status_container']
+        if status_type == "info":
+            container.info(f"🔄 {message}")
+        elif status_type == "success":
+            container.success(f"✅ {message}")
+        elif status_type == "error":
+            container.error(f"❌ {message}")
+        elif status_type == "warning":
+            container.warning(f"⚠️ {message}")
+    
+    return update_simple_status
+
+def create_sidebar_config(debug_mode_default: bool = True) -> Dict[str, Any]:
+    """Create sidebar configuration section."""
+    st.sidebar.markdown("### 🔧 Configuration")
+    
+    # Debug mode toggle
+    debug_mode = st.sidebar.checkbox(
+        "🐛 Debug Mode", 
+        value=debug_mode_default, 
+        help="Show detailed processing logs"
+    )
+    
+    # Session state management options
+    with st.sidebar.expander("🧹 Session Management"):
+        if st.button("Clear All Analysis Data", help="Clear all stored analysis results"):
+            keys_to_clear = [k for k in st.session_state.keys() if k.startswith(('latest_', 'ai_', 'current_url', 'processing_', 'input_'))]
+            for key in keys_to_clear:
+                del st.session_state[key]
+            st.success(f"Cleared {len(keys_to_clear)} session keys")
+    
+    # API Key configuration
+    st.sidebar.markdown("### 🔑 AI Analysis Configuration")
+    
+    # Try to get API key from secrets first
+    api_key = None
+    try:
+        api_key = st.secrets["openai_api_key"]
+        st.sidebar.success("✅ API Key loaded from secrets")
+    except Exception:
+        api_key = st.sidebar.text_input(
+            "OpenAI API Key:",
+            type="password",
+            help="Enter your OpenAI API key for AI analysis"
+        )
+        if api_key:
+            st.sidebar.success("✅ API Key provided")
+        else:
+            st.sidebar.warning("⚠️ API Key needed for AI analysis")
+    
+    return {
+        'debug_mode': debug_mode,
+        'api_key': api_key
+    }
+
+def create_how_it_works_section():
+    """Create the 'How it works' information section with user guidance."""
+    st.subheader("ℹ️ How it works")
+    st.markdown("""
+1. **Choose Input**: 
+   • 🌐 **URL** - Extract content from any website
+   • 📄 **Direct JSON** - Use pre-chunked content 
+   • 📝 **Raw Content** - Paste any text to be chunked automatically
+2. **Process Content**: Click the appropriate processing button to prepare your content
+3. **YMYL Analysis**: Click "Run AI Analysis" to start the compliance audit
+4. **Download Report**: Get a perfectly formatted Word document that imports cleanly into Google Docs
+""")
 
 def create_dual_input_section() -> Tuple[str, str, bool]:
     """
@@ -204,180 +382,6 @@ The tool will automatically chunk this content using the Dejan chunking service,
         )
     
     return 'raw_content', raw_content, process_clicked
-
-# Rest of the functions remain the same...
-def create_page_header():
-    """Create the main page header with title and description."""
-    st.title("🕵 YMYL Audit Tool")
-    st.markdown("**Automatically extract content from websites, generate JSON chunks, and perform YMYL compliance analysis**")
-    st.markdown("---")
-
-def create_user_friendly_log_recap():
-    """Create a consolidated, user-friendly log recap for normal users."""
-    # Check if we have any processing history in session state
-    log_entries = []
-    
-    # Collect content processing logs
-    if 'latest_result' in st.session_state:
-        result = st.session_state['latest_result']
-        if result.get('success'):
-            input_mode = result.get('input_mode', 'url')
-            if input_mode == 'url':
-                log_entries.append({
-                    'step': 'Content Extraction',
-                    'status': 'completed',
-                    'details': f"Successfully extracted content from {result.get('url', 'URL')}",
-                    'data': f"{len(result.get('extracted_content', '')):,} characters extracted"
-                })
-            elif input_mode == 'direct_json':
-                log_entries.append({
-                    'step': 'JSON Input Processing', 
-                    'status': 'completed',
-                    'details': "Direct JSON content validated and processed",
-                    'data': "Content ready for analysis"
-                })
-            elif input_mode == 'raw_content':
-                log_entries.append({
-                    'step': 'Content Chunking', 
-                    'status': 'completed',
-                    'details': "Raw content chunked using Dejan service",
-                    'data': f"Content processed into structured chunks"
-                })
-    
-    # Collect AI analysis logs
-    if 'ai_analysis_result' in st.session_state:
-        ai_result = st.session_state['ai_analysis_result']
-        if ai_result.get('success'):
-            stats = ai_result.get('statistics', {})
-            processing_time = ai_result.get('processing_time', 0)
-            log_entries.append({
-                'step': 'AI Compliance Analysis',
-                'status': 'completed', 
-                'details': f"Analyzed {stats.get('total_chunks', 0)} content sections",
-                'data': f"Completed in {processing_time:.1f} seconds with {stats.get('success_rate', 0):.0f}% success rate"
-            })
-    
-    # Display the recap
-    if log_entries:
-        st.subheader("📋 Processing Summary")
-        st.info("Here's what happened during your analysis:")
-        
-        for i, entry in enumerate(log_entries, 1):
-            status_icon = "✅" if entry['status'] == 'completed' else "⏳"
-            with st.expander(f"{status_icon} Step {i}: {entry['step']}", expanded=True):
-                st.write(f"**What happened:** {entry['details']}")
-                st.write(f"**Result:** {entry['data']}")
-                # Add helpful next steps
-                if entry['step'] in ['Content Extraction', 'Content Chunking', 'JSON Input Processing']:
-                    st.caption("💡 Next: Run AI analysis to check for YMYL compliance issues")
-                elif entry['step'] == 'AI Compliance Analysis':
-                    st.caption("💡 View your report in the 'AI Compliance Report' tab above")
-    else:
-        st.info("🚀 Ready to start! Choose your input method above and begin processing.")
-
-def get_input_mode_display_name(mode: str) -> str:
-    """Convert internal input mode to display name."""
-    mode_map = {
-        'url': 'URL Extraction',
-        'direct_json': 'Direct JSON Input',
-        'raw_content': 'Raw Content Chunking'  # NEW
-    }
-    return mode_map.get(mode, mode)
-
-def track_user_error(error_type, error_message, context=""):
-    """Track errors for user-friendly display later."""
-    if 'user_error_history' not in st.session_state:
-        st.session_state['user_error_history'] = []
-    error_entry = {
-        'timestamp': datetime.now().strftime('%H:%M:%S'),
-        'type': error_type,
-        'message': error_message,
-        'context': context,
-        'user_friendly': _make_error_user_friendly(error_type, error_message)
-    }
-    st.session_state['user_error_history'].append(error_entry)
-    # Keep only last 5 errors
-    if len(st.session_state['user_error_history']) > 5:
-        st.session_state['user_error_history'].pop(0)
-
-def _make_error_user_friendly(error_type, error_message):
-    """Convert technical errors to user-friendly messages."""
-    friendly_messages = {
-        'timeout': "The website took too long to respond. Try again or check if the URL is working.",
-        'connection': "Couldn't connect to the website. Check your internet connection and the URL.",
-        'json': "The content format isn't quite right. Please check your JSON input.",
-        'api': "There was an issue with the AI analysis service. Please try again in a moment.",
-        'parsing': "Had trouble understanding the content format. Please verify your input.",
-        'chunking': "Had trouble processing your content into chunks. Please try again or check the content format.",
-    }
-    # Try to match error type
-    for key, friendly_msg in friendly_messages.items():
-        if key in error_type.lower() or key in error_message.lower():
-            return friendly_msg
-    # Default friendly message
-    return "Something went wrong, but you can try again. If the problem continues, the issue might be temporary."
-
-def create_simple_status_updater():
-    """Create a simple status updater that shows one clear message at a time."""
-    if 'simple_status_container' not in st.session_state:
-        st.session_state['simple_status_container'] = st.empty()
-    
-    def update_simple_status(message, status_type="info"):
-        """Update the simple status display."""
-        container = st.session_state['simple_status_container']
-        if status_type == "info":
-            container.info(f"🔄 {message}")
-        elif status_type == "success":
-            container.success(f"✅ {message}")
-        elif status_type == "error":
-            container.error(f"❌ {message}")
-        elif status_type == "warning":
-            container.warning(f"⚠️ {message}")
-    
-    return update_simple_status
-
-def create_sidebar_config(debug_mode_default: bool = True) -> Dict[str, Any]:
-    """Create sidebar configuration section."""
-    st.sidebar.markdown("### 🔧 Configuration")
-    
-    # Debug mode toggle
-    debug_mode = st.sidebar.checkbox(
-        "🐛 Debug Mode", 
-        value=debug_mode_default, 
-        help="Show detailed processing logs"
-    )
-    
-    # Session state management options
-    with st.sidebar.expander("🧹 Session Management"):
-        if st.button("Clear All Analysis Data", help="Clear all stored analysis results"):
-            keys_to_clear = [k for k in st.session_state.keys() if k.startswith(('latest_', 'ai_', 'current_url', 'processing_', 'input_'))]
-            for key in keys_to_clear:
-                del st.session_state[key]
-            st.success(f"Cleared {len(keys_to_clear)} session keys")
-    
-    # API Key configuration
-    st.sidebar.markdown("### 🔑 AI Analysis Configuration")
-    
-    # Try to get API key from secrets first
-    api_key = None
-    try:
-        api_key = st.secrets["openai_api_key"]
-        st.sidebar.success("✅ API Key loaded from secrets")
-    except Exception:
-        api_key = st.sidebar.text_input(
-            "OpenAI API Key:",
-            type="password",
-            help="Enter your OpenAI API key for AI analysis"
-        )
-        if api_key:
-            st.sidebar.success("✅ API Key provided")
-        else:
-            st.sidebar.warning("⚠️ API Key needed for AI analysis")
-    
-    return {
-        'debug_mode': debug_mode,
-        'api_key': api_key
-    }
 
 def create_debug_logger(placeholder) -> Callable[[str], None]:
     """Create debug logger function for detailed logging."""
@@ -707,8 +711,6 @@ def _create_summary_tab(result: Dict[str, Any], ai_result: Optional[Dict[str, An
     elif input_mode == "📝 Raw Content":
         st.info("**Source**: Raw Content → Chunked via Dejan Service")
 
-# Additional helper functions for the AI report tab
-
 def _create_ai_report_tab(ai_result: Dict[str, Any], content_result: Optional[Dict[str, Any]] = None):
     """Create AI compliance report tab content with Word-only export."""
     st.markdown("### YMYL Compliance Analysis Report")
@@ -922,57 +924,9 @@ def _basic_markdown_cleanup(markdown_content: str) -> str:
     try:
         content = markdown_content
         # Convert headers
-        content = re.sub(r'^# (.+)
-
-def create_how_it_works_section():
-    """Create the 'How it works' information section with user guidance."""
-    st.subheader("ℹ️ How it works")
-    st.markdown("""
-1. **Choose Input**: 
-   • 🌐 **URL** - Extract content from any website
-   • 📄 **Direct JSON** - Use pre-chunked content 
-   • 📝 **Raw Content** - Paste any text to be chunked automatically
-2. **Process Content**: Click the appropriate processing button to prepare your content
-3. **YMYL Analysis**: Click "Run AI Analysis" to start the compliance audit
-4. **Download Report**: Get a perfectly formatted Word document that imports cleanly into Google Docs
-""")
-
-# The rest of the file remains the same...
-, r'\1\n' + '=' * 50, content, flags=re.MULTILINE)
-        content = re.sub(r'^## (.+)
-
-def create_how_it_works_section():
-    """Create the 'How it works' information section with user guidance."""
-    st.subheader("ℹ️ How it works")
-    st.markdown("""
-1. **Choose Input**: 
-   • 🌐 **URL** - Extract content from any website
-   • 📄 **Direct JSON** - Use pre-chunked content 
-   • 📝 **Raw Content** - Paste any text to be chunked automatically
-2. **Process Content**: Click the appropriate processing button to prepare your content
-3. **YMYL Analysis**: Click "Run AI Analysis" to start the compliance audit
-4. **Download Report**: Get a perfectly formatted Word document that imports cleanly into Google Docs
-""")
-
-# The rest of the file remains the same...
-, r'\n\1\n' + '-' * 30, content, flags=re.MULTILINE)
-        content = re.sub(r'^### (.+)
-
-def create_how_it_works_section():
-    """Create the 'How it works' information section with user guidance."""
-    st.subheader("ℹ️ How it works")
-    st.markdown("""
-1. **Choose Input**: 
-   • 🌐 **URL** - Extract content from any website
-   • 📄 **Direct JSON** - Use pre-chunked content 
-   • 📝 **Raw Content** - Paste any text to be chunked automatically
-2. **Process Content**: Click the appropriate processing button to prepare your content
-3. **YMYL Analysis**: Click "Run AI Analysis" to start the compliance audit
-4. **Download Report**: Get a perfectly formatted Word document that imports cleanly into Google Docs
-""")
-
-# The rest of the file remains the same...
-, r'\n\1', content, flags=re.MULTILINE)
+        content = re.sub(r'^# (.+), r'\1\n' + '=' * 50, content, flags=re.MULTILINE)
+        content = re.sub(r'^## (.+), r'\n\1\n' + '-' * 30, content, flags=re.MULTILINE)
+        content = re.sub(r'^### (.+), r'\n\1', content, flags=re.MULTILINE)
         # Convert bullets
         content = re.sub(r'^- (.+)', r'• \1', content, flags=re.MULTILINE)
         # Replace emojis
@@ -1179,6 +1133,15 @@ def create_info_panel(title: str, content: str, icon: str = "ℹ️"):
     """Create an information panel."""
     st.info(f"{icon} **{title}**: {content}")
 
+def get_input_mode_display_name(mode: str) -> str:
+    """Convert internal input mode to display name."""
+    mode_map = {
+        'url': 'URL Extraction',
+        'direct_json': 'Direct JSON Input',
+        'raw_content': 'Raw Content Chunking'  # NEW
+    }
+    return mode_map.get(mode, mode)
+
 # Backward compatibility - keep old function name
 def create_url_input_section() -> tuple[str, bool]:
     """
@@ -1186,18 +1149,3 @@ def create_url_input_section() -> tuple[str, bool]:
     Kept for backward compatibility.
     """
     return _create_url_input_mode()[1:]  # Return only url and process_clicked
-
-def create_how_it_works_section():
-    """Create the 'How it works' information section with user guidance."""
-    st.subheader("ℹ️ How it works")
-    st.markdown("""
-1. **Choose Input**: 
-   • 🌐 **URL** - Extract content from any website
-   • 📄 **Direct JSON** - Use pre-chunked content 
-   • 📝 **Raw Content** - Paste any text to be chunked automatically
-2. **Process Content**: Click the appropriate processing button to prepare your content
-3. **YMYL Analysis**: Click "Run AI Analysis" to start the compliance audit
-4. **Download Report**: Get a perfectly formatted Word document that imports cleanly into Google Docs
-""")
-
-# The rest of the file remains the same...

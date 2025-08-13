@@ -521,7 +521,6 @@ def _create_ai_report_tab(ai_result: Dict[str, Any], content_result: Optional[Di
     with st.expander("📝 View Raw Markdown"):
         st.code(ai_report, language='markdown')
 
-# --- UPDATED FUNCTION ---
 def _create_download_buttons(formats: Dict[str, bytes], ai_report: str = None):
     """
     Create download buttons for different formats with XLSX button as first option.
@@ -533,37 +532,46 @@ def _create_download_buttons(formats: Dict[str, bytes], ai_report: str = None):
         
         # --- New XLSX Download Button Implementation ---
         with col1:
-            if st.button("📊 Excel", key=f"xlsx_btn_{timestamp}"):
-                if ai_report:
-                    try:
-                        # Import the new XLSX exporter
-                        from exporters.xlsx_exporter import XLSXExporter
-                        
-                        # Create XLSX file
-                        xlsx_exporter = XLSXExporter()
-                        xlsx_data = xlsx_exporter.convert(ai_report, "YMYL Compliance Audit Report")
-                        
-                        # Create download button
-                        filename = f"ymyl_compliance_report_{timestamp}.xlsx"
-                        st.download_button(
-                            label="⬇️ Download Excel",
-                            data=xlsx_data,
-                            file_name=filename,
-                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                            key=f"xlsx_download_{timestamp}"
-                        )
-                        
-                        st.success("✅ Excel file ready for download!")
-                        
-                    except ImportError:
-                        st.error("❌ Excel export requires openpyxl library. Install it with: pip install openpyxl")
-                    except Exception as e:
-                        st.error(f"❌ Excel export failed: {str(e)[:100]}...")
-                        
-                        # Fallback to other formats
-                        st.info("💡 Try downloading as Word or PDF instead")
-                else:
-                    st.error("No report to export")
+            if ai_report:
+                try:
+                    # Import and create XLSX file directly
+                    from exporters.xlsx_exporter import XLSXExporter
+                    
+                    xlsx_exporter = XLSXExporter()
+                    xlsx_data = xlsx_exporter.convert(ai_report, "YMYL Compliance Audit Report")
+                    
+                    # Create download button immediately
+                    filename = f"ymyl_compliance_report_{timestamp}.xlsx"
+                    st.download_button(
+                        label="📊 Excel",
+                        data=xlsx_data,
+                        file_name=filename,
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        key=f"xlsx_download_{timestamp}",
+                        help="Download as Excel spreadsheet with multiple worksheets"
+                    )
+                    
+                except ImportError:
+                    st.button(
+                        "📊 Excel",
+                        disabled=True,
+                        help="Excel export requires openpyxl library. Install it with: pip install openpyxl",
+                        key=f"xlsx_disabled_{timestamp}"
+                    )
+                except Exception as e:
+                    st.button(
+                        "📊 Excel", 
+                        disabled=True,
+                        help=f"Excel export failed: {str(e)[:100]}",
+                        key=f"xlsx_error_{timestamp}"
+                    )
+            else:
+                st.button(
+                    "📊 Excel",
+                    disabled=True,
+                    help="No report available to export",
+                    key=f"xlsx_no_report_{timestamp}"
+                )
 
         format_configs = {
             'markdown': {
@@ -596,37 +604,33 @@ def _create_download_buttons(formats: Dict[str, bytes], ai_report: str = None):
         for i, (fmt, config) in enumerate(format_configs.items()):
             if fmt in formats and i < len(columns):
                 with columns[i]:
-                    try:
-                        filename = f"ymyl_compliance_report_{timestamp}{config['extension']}"
-                        # FIXED: Use unique key for each download button to prevent conflicts
-                        button_key = f"download_{fmt}_{timestamp}_{hash(str(formats[fmt]))}"
-                        st.download_button(
-                            label=config['label'],
-                            data=formats[fmt],
-                            file_name=filename,
-                            mime=config['mime'],
-                            help=config['help'],
-                            key=button_key  # Unique key to prevent media file conflicts
-                        )
-                    except Exception as e:
-                        # If individual download button fails, show error but continue
-                        st.error(f"Error creating {fmt.upper()} download: {str(e)[:50]}...")
-                        
-    except Exception as e:
-        # If entire download section fails, provide fallback
-        st.error("Error creating download buttons. Please try refreshing the page.")
-        # Provide simple fallback download for markdown
-        if 'markdown' in formats:
-            try:
-                st.download_button(
-                    label="📝 Download Report (Markdown)",
-                    data=formats['markdown'],
-                    file_name=f"ymyl_report_backup_{int(time.time())}.md",
-                    mime="text/markdown",
-                    key=f"backup_download_{int(time.time())}"
-                )
-            except:
-                st.write("Please refresh the page to access downloads.")
+                try:
+                    filename = f"ymyl_compliance_report_{timestamp}{config['extension']}"
+                    button_key = f"download_{fmt}_{timestamp}_{hash(str(formats[fmt]))}"
+                    st.download_button(
+                        label=config['label'],
+                        data=formats[fmt],
+                        file_name=filename,
+                        mime=config['mime'],
+                        help=config['help'],
+                        key=button_key
+                    )
+                except Exception as e:
+                    st.error(f"Error creating {fmt.upper()} download: {str(e)[:50]}...")
+                    
+except Exception as e:
+    st.error("Error creating download buttons. Please try refreshing the page.")
+    if 'markdown' in formats:
+        try:
+            st.download_button(
+                label="📝 Download Report (Markdown)",
+                data=formats['markdown'],
+                file_name=f"ymyl_report_backup_{int(time.time())}.md",
+                mime="text/markdown",
+                key=f"backup_download_{int(time.time())}"
+            )
+        except:
+            st.write("Please refresh the page to access downloads.")
 
 def _create_individual_analyses_tab(ai_result: Dict[str, Any]):
     """Create individual analyses tab with both readable format and raw AI output."""

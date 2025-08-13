@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
-Export Manager for YMYL Audit Tool
+Updated Export Manager for YMYL Audit Tool with XLSX Support
 
-Coordinates multiple export formats and provides a unified interface.
+Coordinates multiple export formats including the new XLSX exporter.
 """
 
 import time
@@ -14,12 +14,19 @@ from exporters.pdf_exporter import PDFExporter
 from config.settings import DEFAULT_EXPORT_FORMATS
 from utils.logging_utils import setup_logger, format_processing_step
 
+# Try to import XLSX exporter with fallback
+try:
+    from exporters.xlsx_exporter import XLSXExporter
+    XLSX_AVAILABLE = True
+except ImportError:
+    XLSX_AVAILABLE = False
+
 logger = setup_logger(__name__)
 
 
 class ExportManager:
     """
-    Manages export operations across multiple formats.
+    Manages export operations across multiple formats including XLSX.
     
     Features:
     - Unified export interface
@@ -27,16 +34,25 @@ class ExportManager:
     - Progress tracking
     - Error handling and recovery
     - Export statistics and metadata
+    - NEW: XLSX/Excel support
     """
     
     def __init__(self):
-        """Initialize the ExportManager."""
+        """Initialize the ExportManager with XLSX support."""
         self.exporters = {
             'html': HTMLExporter(),
             'docx': WordExporter(),
             'pdf': PDFExporter()
         }
-        self.supported_formats = list(self.exporters.keys()) + ['markdown']
+        
+        # Add XLSX exporter if available
+        if XLSX_AVAILABLE:
+            self.exporters['xlsx'] = XLSXExporter()
+            self.supported_formats = list(self.exporters.keys()) + ['markdown']
+        else:
+            self.supported_formats = list(self.exporters.keys()) + ['markdown']
+            logger.warning("XLSX export not available - openpyxl library required")
+        
         logger.info(f"ExportManager initialized with formats: {', '.join(self.supported_formats)}")
 
     def export_all_formats(self, 
@@ -44,7 +60,7 @@ class ExportManager:
                           title: str = "YMYL Compliance Audit Report",
                           formats: Optional[List[str]] = None) -> Dict[str, Any]:
         """
-        Export report in all requested formats.
+        Export report in all requested formats including XLSX.
         
         Args:
             markdown_content (str): Markdown content to export
@@ -57,7 +73,10 @@ class ExportManager:
         logger.info(f"Starting multi-format export ({len(markdown_content):,} characters)")
         
         if formats is None:
-            formats = DEFAULT_EXPORT_FORMATS
+            # Include XLSX in default formats if available
+            formats = DEFAULT_EXPORT_FORMATS.copy()
+            if XLSX_AVAILABLE and 'xlsx' not in formats:
+                formats.append('xlsx')
         
         # Validate formats
         valid_formats = self._validate_formats(formats)
@@ -79,7 +98,8 @@ class ExportManager:
                 'formats_processed': [],
                 'export_timestamp': datetime.now().isoformat(),
                 'content_length': len(markdown_content),
-                'processing_time': 0
+                'processing_time': 0,
+                'xlsx_available': XLSX_AVAILABLE
             }
         }
         
@@ -105,6 +125,10 @@ class ExportManager:
                 error_msg = f"Export failed for {fmt}: {str(e)}"
                 logger.error(error_msg)
                 results['errors'][fmt] = error_msg
+                
+                # Special handling for XLSX errors
+                if fmt == 'xlsx':
+                    results['errors'][fmt] += " (Requires: pip install openpyxl)"
         
         # Calculate final metadata
         processing_time = time.time() - start_time
@@ -129,11 +153,11 @@ class ExportManager:
                             format_name: str,
                             title: str = "YMYL Compliance Audit Report") -> Dict[str, Any]:
         """
-        Export report in a single format.
+        Export report in a single format including XLSX.
         
         Args:
             markdown_content (str): Markdown content to export
-            format_name (str): Format to export ('html', 'docx', 'pdf', 'markdown')
+            format_name (str): Format to export ('html', 'docx', 'pdf', 'xlsx', 'markdown')
             title (str): Document title
             
         Returns:
@@ -144,6 +168,10 @@ class ExportManager:
         # Validate format
         if format_name not in self.supported_formats:
             return self._create_error_result(f"Unsupported format: {format_name}")
+        
+        # Special check for XLSX
+        if format_name == 'xlsx' and not XLSX_AVAILABLE:
+            return self._create_error_result("XLSX export requires openpyxl library: pip install openpyxl")
         
         # Validate content
         if not self._validate_content(markdown_content):
@@ -182,98 +210,9 @@ class ExportManager:
             logger.error(error_msg)
             return self._create_error_result(error_msg)
 
-    def get_export_info(self, markdown_content: str) -> Dict[str, Any]:
-        """
-        Get information about exports without actually performing them.
-        
-        Args:
-            markdown_content (str): Markdown content to analyze
-            
-        Returns:
-            dict: Export information and estimates
-        """
-        info = {
-            'content_analysis': {
-                'character_count': len(markdown_content),
-                'word_count_estimate': len(markdown_content.split()),
-                'line_count': len(markdown_content.split('\n')),
-                'is_valid': self._validate_content(markdown_content)
-            },
-            'supported_formats': self.supported_formats,
-            'format_estimates': {}
-        }
-        
-        # Get format-specific information
-        for fmt_name, exporter in self.exporters.items():
-            try:
-                if hasattr(exporter, 'get_document_info'):
-                    info['format_estimates'][fmt_name] = exporter.get_document_info(markdown_content)
-                else:
-                    info['format_estimates'][fmt_name] = {'available': False}
-            except Exception as e:
-                info['format_estimates'][fmt_name] = {'error': str(e)}
-        
-        # Markdown format info (simple)
-        info['format_estimates']['markdown'] = {
-            'file_size_estimate': f"{len(markdown_content.encode('utf-8')) // 1024}KB",
-            'character_count': len(markdown_content),
-            'encoding': 'UTF-8'
-        }
-        
-        return info
-
-    def validate_export_request(self, formats: List[str], content: str) -> Dict[str, Any]:
-        """
-        Validate an export request before processing.
-        
-        Args:
-            formats (list): Requested export formats
-            content (str): Content to export
-            
-        Returns:
-            dict: Validation results
-        """
-        validation = {
-            'valid': True,
-            'errors': [],
-            'warnings': [],
-            'valid_formats': [],
-            'invalid_formats': [],
-            'content_valid': False
-        }
-        
-        # Validate content
-        validation['content_valid'] = self._validate_content(content)
-        if not validation['content_valid']:
-            validation['errors'].append("Content is empty or invalid")
-            validation['valid'] = False
-        
-        # Validate formats
-        for fmt in formats:
-            if fmt in self.supported_formats:
-                validation['valid_formats'].append(fmt)
-            else:
-                validation['invalid_formats'].append(fmt)
-                validation['errors'].append(f"Unsupported format: {fmt}")
-        
-        if not validation['valid_formats']:
-            validation['errors'].append("No valid formats specified")
-            validation['valid'] = False
-        
-        # Content size warnings
-        content_size = len(content)
-        if content_size > 1000000:  # 1MB
-            validation['warnings'].append(f"Large content size: {content_size:,} characters")
-        
-        if content_size > 2000000:  # 2MB
-            validation['errors'].append("Content too large for reliable export")
-            validation['valid'] = False
-        
-        return validation
-
     def get_format_capabilities(self) -> Dict[str, Dict[str, Any]]:
         """
-        Get information about each export format's capabilities.
+        Get information about each export format's capabilities including XLSX.
         
         Returns:
             dict: Format capabilities information
@@ -303,6 +242,16 @@ class ExportManager:
                 'file_extension': '.pdf',
                 'mime_type': 'application/pdf'
             },
+            'xlsx': {
+                'name': 'Excel Spreadsheet',
+                'description': 'Structured data in multiple worksheets',
+                'features': ['multiple worksheets', 'data analysis', 'charts and formatting'],
+                'best_for': ['data analysis', 'business intelligence', 'compliance tracking'],
+                'file_extension': '.xlsx',
+                'mime_type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                'available': XLSX_AVAILABLE,
+                'requirements': 'openpyxl library' if not XLSX_AVAILABLE else None
+            },
             'markdown': {
                 'name': 'Markdown',
                 'description': 'Plain text with formatting syntax',
@@ -315,9 +264,56 @@ class ExportManager:
         
         return capabilities
 
+    def get_recommended_formats(self, use_case: str = "general") -> List[str]:
+        """
+        Get recommended export formats for different use cases including XLSX.
+        
+        Args:
+            use_case (str): Use case ('general', 'business', 'web', 'archive', 'analysis')
+            
+        Returns:
+            list: Recommended formats
+        """
+        recommendations = {
+            'general': ['html', 'pdf', 'markdown'],
+            'business': ['xlsx', 'docx', 'pdf'] if XLSX_AVAILABLE else ['docx', 'pdf'],
+            'web': ['html', 'markdown'],
+            'archive': ['pdf', 'html'],
+            'development': ['markdown', 'html'],
+            'presentation': ['pdf', 'html'],
+            'analysis': ['xlsx', 'html'] if XLSX_AVAILABLE else ['html', 'pdf'],
+            'compliance': ['xlsx', 'pdf', 'docx'] if XLSX_AVAILABLE else ['pdf', 'docx']
+        }
+        
+        return recommendations.get(use_case, ['html', 'pdf', 'markdown'])
+
+    def create_xlsx_report(self, markdown_content: str, title: str = "YMYL Compliance Audit Report") -> bytes:
+        """
+        Create XLSX report specifically (convenience method).
+        
+        Args:
+            markdown_content (str): Markdown content
+            title (str): Document title
+            
+        Returns:
+            bytes: XLSX file data
+            
+        Raises:
+            ImportError: If openpyxl is not available
+            ValueError: If content is invalid
+        """
+        if not XLSX_AVAILABLE:
+            raise ImportError("XLSX export requires openpyxl library. Install with: pip install openpyxl")
+        
+        if not self._validate_content(markdown_content):
+            raise ValueError("Invalid markdown content")
+        
+        xlsx_exporter = self.exporters['xlsx']
+        return xlsx_exporter.convert(markdown_content, title)
+
     def _validate_formats(self, formats: List[str]) -> List[str]:
         """
-        Validate and filter requested formats.
+        Validate and filter requested formats including XLSX availability check.
         
         Args:
             formats (list): Requested formats
@@ -328,11 +324,36 @@ class ExportManager:
         valid_formats = []
         for fmt in formats:
             if fmt in self.supported_formats:
-                valid_formats.append(fmt)
+                # Special check for XLSX availability
+                if fmt == 'xlsx' and not XLSX_AVAILABLE:
+                    logger.warning(f"Skipping XLSX format - openpyxl library not available")
+                else:
+                    valid_formats.append(fmt)
             else:
                 logger.warning(f"Skipping unsupported format: {fmt}")
         
         return valid_formats
+
+    def get_export_statistics(self) -> Dict[str, Any]:
+        """
+        Get statistics about export capabilities and performance including XLSX.
+        
+        Returns:
+            dict: Export statistics
+        """
+        stats = {
+            'supported_formats': len(self.supported_formats),
+            'available_exporters': len(self.exporters),
+            'formats': self.supported_formats,
+            'xlsx_available': XLSX_AVAILABLE,
+            'capabilities': self.get_format_capabilities(),
+            'recommendations': {
+                use_case: self.get_recommended_formats(use_case)
+                for use_case in ['general', 'business', 'web', 'archive', 'development', 'presentation', 'analysis', 'compliance']
+            }
+        }
+        
+        return stats
 
     def _validate_content(self, content: str) -> bool:
         """
@@ -376,77 +397,10 @@ class ExportManager:
             'formats': {},
             'metadata': {
                 'export_timestamp': datetime.now().isoformat(),
-                'error': error_message
+                'error': error_message,
+                'xlsx_available': XLSX_AVAILABLE
             }
         }
-
-    def get_recommended_formats(self, use_case: str = "general") -> List[str]:
-        """
-        Get recommended export formats for different use cases.
-        
-        Args:
-            use_case (str): Use case ('general', 'business', 'web', 'archive')
-            
-        Returns:
-            list: Recommended formats
-        """
-        recommendations = {
-            'general': ['html', 'pdf', 'markdown'],
-            'business': ['docx', 'pdf'],
-            'web': ['html', 'markdown'],
-            'archive': ['pdf', 'html'],
-            'development': ['markdown', 'html'],
-            'presentation': ['pdf', 'html']
-        }
-        
-        return recommendations.get(use_case, ['html', 'pdf', 'markdown'])
-
-    def create_filename(self, base_name: str, format_name: str, include_timestamp: bool = True) -> str:
-        """
-        Create appropriate filename for export format.
-        
-        Args:
-            base_name (str): Base filename (without extension)
-            format_name (str): Export format
-            include_timestamp (bool): Whether to include timestamp
-            
-        Returns:
-            str: Complete filename with extension
-        """
-        # Clean base name
-        clean_name = "".join(c for c in base_name if c.isalnum() or c in (' ', '-', '_')).strip()
-        clean_name = clean_name.replace(' ', '_').lower()
-        
-        # Add timestamp if requested
-        if include_timestamp:
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            clean_name = f"{clean_name}_{timestamp}"
-        
-        # Get file extension
-        capabilities = self.get_format_capabilities()
-        extension = capabilities.get(format_name, {}).get('file_extension', f'.{format_name}')
-        
-        return f"{clean_name}{extension}"
-
-    def get_export_statistics(self) -> Dict[str, Any]:
-        """
-        Get statistics about export capabilities and performance.
-        
-        Returns:
-            dict: Export statistics
-        """
-        stats = {
-            'supported_formats': len(self.supported_formats),
-            'available_exporters': len(self.exporters),
-            'formats': self.supported_formats,
-            'capabilities': self.get_format_capabilities(),
-            'recommendations': {
-                use_case: self.get_recommended_formats(use_case)
-                for use_case in ['general', 'business', 'web', 'archive', 'development', 'presentation']
-            }
-        }
-        
-        return stats
 
     def cleanup(self):
         """Clean up any resources used by exporters."""

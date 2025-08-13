@@ -11,6 +11,7 @@ try:
     from .html_exporter import HTMLExporter
     from .word_exporter import WordExporter
     from .pdf_exporter import PDFExporter
+    from .xlsx_exporter import XLSXExporter
 except ImportError as e:
     # If imports fail, create dummy logger to prevent crashes
     import logging
@@ -39,5 +40,6 @@ __all__ = [
     'ExportManager',
     'HTMLExporter',
     'WordExporter', 
-    'PDFExporter'
+    'PDFExporter',
+    'XLSXExporter'
 ]

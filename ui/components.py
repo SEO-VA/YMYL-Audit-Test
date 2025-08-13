@@ -16,7 +16,7 @@ from typing import Dict, Any, Optional, List, Callable, Tuple
 from config.settings import DEFAULT_TIMEZONE
 from utils.logging_utils import log_with_timestamp
 from utils.json_utils import get_display_json_string  # FIXED: Import centralized display function
-from exporters.export_manager import ExportManager
+from exporters.word_exporter import WordExporter
 
 def create_page_header():
     """Create the main page header with title and description."""
@@ -479,162 +479,59 @@ def create_results_tabs(result: Dict[str, Any], ai_result: Optional[Dict[str, An
         with tab3:
             _create_summary_tab(result)
 
+
 def _create_ai_report_tab(ai_result: Dict[str, Any], content_result: Optional[Dict[str, Any]] = None):
     """
     Create AI compliance report tab content.
-    UPDATED: Restructured layout with copy functionality and downloads at top
+    SIMPLIFIED: Only Word download - works perfectly with Google Docs
     """
     st.markdown("### YMYL Compliance Analysis Report")
     ai_report = ai_result['report']
-    # Export section (moved to top)
-    st.markdown("#### 📄 Download Formats")
+    
+    # Simplified export section - Word only
+    st.markdown("#### 📄 Download Report")
     try:
-        # Create export manager and generate all formats
-        with ExportManager() as export_mgr:
-            export_results = export_mgr.export_all_formats(ai_report)
-            if export_results['success'] and export_results['formats']:
-                _create_download_buttons(export_results['formats'], ai_report)
-            else:
-                st.error("Failed to generate export formats")
-                # Fallback to markdown download
-                timestamp = int(time.time())
-                st.download_button(
-                    label="💾 Download Report (Markdown)",
-                    data=ai_report,
-                    file_name=f"ymyl_compliance_report_{timestamp}.md",
-                    mime="text/markdown"
-                )
+        # Generate Word document only
+        from exporters.word_exporter import WordExporter
+        
+        word_exporter = WordExporter()
+        word_bytes = word_exporter.convert(ai_report, "YMYL Compliance Audit Report")
+        
+        # Create download button
+        timestamp = int(time.time())
+        filename = f"ymyl_compliance_report_{timestamp}.docx"
+        
+        col1, col2, col3 = st.columns([1, 2, 1])
+        with col2:  # Center the download button
+            st.download_button(
+                label="📄 Download Word Document",
+                data=word_bytes,
+                file_name=filename,
+                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                help="Download as Word document - imports perfectly into Google Docs",
+                type="primary",
+                use_container_width=True
+            )
+        
+        st.success("✅ Word document ready! Imports cleanly into Google Docs with perfect formatting.")
+        
     except Exception as e:
-        st.error(f"Error creating export formats: {e}")
-        # Fallback download
+        st.error(f"Error creating Word document: {e}")
+        # Fallback to markdown download
         timestamp = int(time.time())
         st.download_button(
-            label="💾 Download Report (Markdown)",
+            label="📝 Download Report (Markdown)",
             data=ai_report,
             file_name=f"ymyl_compliance_report_{timestamp}.md",
             mime="text/markdown"
         )
-    # Formatted report in expandable box
+    
+    # Keep the existing view options
     with st.expander("📖 View Formatted Report"):
         st.markdown(ai_report)
-    # Raw markdown at bottom in expandable box
+    
     with st.expander("📝 View Raw Markdown"):
         st.code(ai_report, language='markdown')
-
-# --- UPDATED COPY BUTTON FUNCTION ---
-def _create_download_buttons(formats: Dict[str, bytes], ai_report: str = None):
-    """
-    Create download buttons for different formats with copy button for Google Docs formatted text.
-    UPDATED: Copy button now provides clean, formatted text perfect for Google Docs
-    """
-    try:
-        timestamp = int(time.time())
-        col1, col2, col3, col4, col5 = st.columns(5)
-        
-        # --- Updated Copy Button Implementation ---
-        with col1:
-            # Copy button with Google Docs formatting
-            if st.button("📋 Copy", key=f"copy_btn_{timestamp}"):
-                if ai_report:
-                    try:
-                        # Convert markdown to Google Docs friendly format
-                        formatted_text = _convert_to_google_docs_format(ai_report)
-                        
-                        # Try to copy to clipboard
-                        try:
-                            import streamlit_js_eval as st_js
-                            
-                            # Escape the text properly for JavaScript
-                            escaped_text = formatted_text.replace('\\', '\\\\').replace('`', '\\`').replace('\n', '\\n').replace('\r', '\\r')
-                            
-                            st_js.st_js_eval(f"navigator.clipboard.writeText(`{escaped_text}`)")
-                            st.success("✅ Formatted text copied! Perfect for pasting into Google Docs")
-                            
-                        except Exception as e:
-                            # Fallback: show text area for manual copy
-                            st.info("📋 Copy this formatted text:")
-                            st.text_area(
-                                "Formatted text (ready for Google Docs):",
-                                value=formatted_text,
-                                height=150,
-                                key=f"manual_copy_{timestamp}",
-                                help="Select all text and copy to paste into Google Docs"
-                            )
-                        
-                    except Exception as e:
-                        st.error("Copy failed - showing text to copy manually:")
-                        st.text_area(
-                            "Copy this text:",
-                            value=ai_report,
-                            height=150,
-                            key=f"manual_copy_{timestamp}"
-                        )
-                else:
-                    st.error("No report to copy")
-
-        format_configs = {
-            'markdown': {
-                'label': "📝 Markdown",
-                'mime': "text/markdown",
-                'help': "Original markdown format - perfect for copying to other platforms",
-                'extension': '.md'
-            },
-            'html': {
-                'label': "🌐 HTML", 
-                'mime': "text/html",
-                'help': "Styled HTML document - opens in any web browser",
-                'extension': '.html'
-            },
-            'docx': {
-                'label': "📄 Word",
-                'mime': "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                'help': "Microsoft Word document - ready for editing and sharing",
-                'extension': '.docx'
-            },
-            'pdf': {
-                'label': "📋 PDF",
-                'mime': "application/pdf", 
-                'help': "Professional PDF document - perfect for presentations and archival",
-                'extension': '.pdf'
-            }
-        }
-        
-        columns = [col2, col3, col4, col5]  # Skip col1 since it's used for copy button
-        for i, (fmt, config) in enumerate(format_configs.items()):
-            if fmt in formats and i < len(columns):
-                with columns[i]:
-                    try:
-                        filename = f"ymyl_compliance_report_{timestamp}{config['extension']}"
-                        # FIXED: Use unique key for each download button to prevent conflicts
-                        button_key = f"download_{fmt}_{timestamp}_{hash(str(formats[fmt]))}"
-                        st.download_button(
-                            label=config['label'],
-                            data=formats[fmt],
-                            file_name=filename,
-                            mime=config['mime'],
-                            help=config['help'],
-                            key=button_key  # Unique key to prevent media file conflicts
-                        )
-                    except Exception as e:
-                        # If individual download button fails, show error but continue
-                        st.error(f"Error creating {fmt.upper()} download: {str(e)[:50]}...")
-                        
-    except Exception as e:
-        # If entire download section fails, provide fallback
-        st.error("Error creating download buttons. Please try refreshing the page.")
-        # Provide simple fallback download for markdown
-        if 'markdown' in formats:
-            try:
-                st.download_button(
-                    label="📝 Download Report (Markdown)",
-                    data=formats['markdown'],
-                    file_name=f"ymyl_report_backup_{int(time.time())}.md",
-                    mime="text/markdown",
-                    key=f"backup_download_{int(time.time())}"
-                )
-            except:
-                st.write("Please refresh the page to access downloads.")
-
 
 def _convert_to_google_docs_format(markdown_content: str) -> str:
     """

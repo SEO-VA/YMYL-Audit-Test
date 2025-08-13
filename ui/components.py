@@ -533,23 +533,28 @@ def _create_download_buttons(formats: Dict[str, bytes], ai_report: str = None):
         
         # --- Updated Copy Button Implementation ---
         with col1:
-            # Copy button using streamlit_js_eval
+            # Copy button with streamlit_js_eval (simple version)
             if st.button("📋 Copy", key=f"copy_btn_{timestamp}"):
                 if ai_report:
                     try:
-                        # Use streamlit_js_eval to copy text to clipboard
-                        st_js.copy_to_clipboard(ai_report) 
-                        # Provide immediate feedback
-                        st.success("✅ Report copied to clipboard!") 
+                        import streamlit_js_eval as st_js
+                        
+                        # Escape the text properly for JavaScript
+                        escaped_text = ai_report.replace('\\', '\\\\').replace('`', '\\`').replace('\n', '\\n').replace('\r', '\\r')
+                        
+                        st_js.st_js_eval(f"navigator.clipboard.writeText(`{escaped_text}`)")
+                        st.success("✅ Copied to clipboard!")
+                        
                     except Exception as e:
-                        st.error(f"❌ Failed to copy report: {e}")
-                        # Optionally, provide a manual fallback
-                        with st.expander("📎 Manual Copy"):
-                            st.markdown("**Copy the report text below:**")
-                            st.text_area("Report Content", value=ai_report, height=200, key=f"manual_copy_area_{timestamp}")
+                        st.error("Copy failed - showing text to copy manually:")
+                        st.text_area(
+                            "Copy this text:",
+                            value=ai_report,
+                            height=150,
+                            key=f"manual_copy_{timestamp}"
+                        )
                 else:
-                    st.warning("No report content available to copy.")
-        # --- End of Updated Copy Button Implementation ---
+                    st.error("No report to copy")
 
         format_configs = {
             'markdown': {

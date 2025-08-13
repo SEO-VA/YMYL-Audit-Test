@@ -221,7 +221,8 @@ class PDFExporter:
             alignment=TA_LEFT
         ))
         
-    if 'Code' not in self.styles.byName:
+        # Code Style - Only add if not already defined
+        if 'Code' not in self.styles.byName:
         self.styles.add(ParagraphStyle(
             name='Code',
             parent=self.styles['Normal'],
@@ -234,7 +235,7 @@ class PDFExporter:
             spaceBefore=6,
             spaceAfter=6
         ))
-        
+
     def _build_story(self, markdown_content: str, title: str) -> List:
         """
         Build the story (content) for the PDF document.

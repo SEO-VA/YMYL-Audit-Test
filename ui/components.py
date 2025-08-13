@@ -534,16 +534,16 @@ def _create_download_buttons(formats: Dict[str, bytes], ai_report: str = None):
         timestamp = int(time.time())
         col1, col2, col3, col4, col5 = st.columns(5)
         
-            with col1:
-        if st.button("📋 Show Copy Text", help="Show text to copy manually", key=f"show_copy_{timestamp}"):
-            if ai_report:
-                st.text_area(
-                    "Copy this text:",
-                    value=ai_report,
-                    height=200,
-                    help="Select all (Ctrl+A) and copy (Ctrl+C)",
-                    key=f"copy_area_{timestamp}"
-                )
+        with col1:
+            if st.button("📋 Show Copy Text", help="Show text to copy manually", key=f"show_copy_{timestamp}"):
+                if ai_report:
+                    st.text_area(
+                        "Copy this text:",
+                        value=ai_report,
+                        height=200,
+                        help="Select all (Ctrl+A) and copy (Ctrl+C)",
+                        key=f"copy_area_{timestamp}"
+            )
         
         format_configs = {
             'markdown': {

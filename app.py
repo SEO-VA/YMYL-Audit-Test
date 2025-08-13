@@ -231,6 +231,28 @@ def process_url_workflow(url: str, debug_mode: bool = False) -> dict:
                     simple_status("Content successfully chunked!", "success")
                 elif "workflow complete" in message:
                     simple_status("Raw content ready for AI analysis!", "success")
+            log_placeholder = st.empty()
+            log_callback = create_debug_logger(log_placeholder)
+            use_simple_logging = False
+        else:
+            simple_status = create_simple_status_updater()
+            use_simple_logging = True
+            
+            def log_callback(message):
+                if "Initializing chunk processor" in message:
+                    simple_status("Preparing to chunk your content...", "info")
+                elif "Navigating to" in message:
+                    simple_status("Connecting to chunking service...", "info")
+                elif "Using JavaScript to copy content" in message:
+                    simple_status("Sending content for processing...", "info")
+                elif "Clicking submit button" in message:
+                    simple_status("Processing content into chunks...", "info")
+                elif "Waiting for results" in message:
+                    simple_status("Waiting for chunking to complete...", "info")
+                elif "Extraction complete" in message:
+                    simple_status("Content successfully chunked!", "success")
+                elif "workflow complete" in message:
+                    simple_status("Raw content ready for AI analysis!", "success")
         
         # Basic validation
         if use_simple_logging:
@@ -814,4 +836,4 @@ def process_raw_content_workflow(raw_content: str, debug_mode: bool = False) -> 
                 st.info(f"🧹 Cleared previous analysis data for fresh start ({cleared_count} items)")
         
         # Setup logging based on mode
-            if debug_mode:
+        if debug_mode:

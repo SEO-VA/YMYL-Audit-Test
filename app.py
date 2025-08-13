@@ -812,16 +812,19 @@ def _clean_markdown_syntax(text: str) -> str:
     # Clean up extra spaces
     text = re.sub(r'\s+', ' ', text).strip()
     return text
+
 def _basic_markdown_cleanup(markdown_content: str) -> str:
     """Basic fallback cleanup if main formatting fails."""
     try:
         content = markdown_content
-        # Convert headers
-        content = re.sub(r'^# (.+)', r'\1\n' + '=' * 50, content, flags=re.MULTILINE)
-        content = re.sub(r'^## (.+)', r'\n\1\n' + '-' * 30, content, flags=re.MULTILINE)
-        content = re.sub(r'^### (.+)', r'\n\1', content, flags=re.MULTILINE)
-        # Convert bullets
-        content = re.sub(r'^- (.+)', r'• \1', content, flags=re.MULTILINE)
+        # Convert headers - FIXED: Use non-greedy patterns and proper anchoring
+        content = re.sub(r'^# (.+?)$', r'\1\n' + '=' * 50, content, flags=re.MULTILINE)
+        content = re.sub(r'^## (.+?)$', r'\n\1\n' + '-' * 30, content, flags=re.MULTILINE)
+        content = re.sub(r'^### (.+?)$', r'\n\1', content, flags=re.MULTILINE)
+        
+        # Convert bullets - FIXED: Use non-greedy pattern
+        content = re.sub(r'^- (.+?)$', r'• \1', content, flags=re.MULTILINE)
+        
         # Replace emojis
         content = content.replace('🔴', 'CRITICAL:')
         content = content.replace('🟠', 'HIGH:')
@@ -829,15 +832,19 @@ def _basic_markdown_cleanup(markdown_content: str) -> str:
         content = content.replace('🔵', 'LOW:')
         content = content.replace('✅', 'OK')
         content = content.replace('❌', 'FAIL')
-        # Remove remaining markdown
+        
+        # Remove remaining markdown - FIXED: Use non-greedy patterns
         content = re.sub(r'\*\*(.*?)\*\*', r'\1', content)
         content = re.sub(r'\*(.*?)\*', r'\1', content)
-        content = re.sub(r'`([^`]+)`', r'\1', content)
+        content = re.sub(r'`([^`]+?)`', r'\1', content)
+        
         # Clean up spacing
         content = re.sub(r'\n{3,}', '\n\n', content)
         return content.strip()
     except Exception as e:
+        # If all else fails, return original content
         return markdown_content
+
 def _create_individual_analyses_tab(ai_result: Dict[str, Any]):
     """Create individual analyses tab with both readable format and raw AI output."""
     from utils.json_utils import convert_violations_json_to_readable

@@ -534,19 +534,44 @@ def _create_download_buttons(formats: Dict[str, bytes], ai_report: str = None):
         timestamp = int(time.time())
         col1, col2, col3, col4, col5 = st.columns(5)
         
-        # First button: Copy to Clipboard
+        # In your _create_download_buttons function, replace the copy button section:
         with col1:
-            if st.button("📋 Copy", help="Copy plain text for pasting into Google Docs, Word, etc.", key=f"copy_button_{timestamp}"):
+            copy_key = f"copy_button_{session_id}_{timestamp}"
+            if st.button("📋 Copy", help="Copy plain text for pasting into Google Docs, Word, etc.", key=copy_key):
                 if ai_report:
-                    # Use JavaScript to copy to clipboard
+                    # Better escaping for JavaScript
+                    escaped_report = ai_report.replace('\\', '\\\\').replace('`', '\\`').replace('$', '\\$').replace('\n', '\\n').replace('\r', '\\r').replace('"', '\\"').replace("'", "\\'")
+                    
                     st.components.v1.html(f"""
                         <script>
-                        navigator.clipboard.writeText(`{ai_report.replace('`', '\\`')}`).then(function() {{
-                            console.log('Report copied to clipboard!');
-                        }});
+                        const text = `{escaped_report}`;
+                        
+                        if (navigator.clipboard && window.isSecureContext) {{
+                            // Use modern clipboard API
+                            navigator.clipboard.writeText(text).then(function() {{
+                                console.log('Report copied to clipboard!');
+                                document.getElementById('copy-status').innerHTML = '✅ Copied!';
+                            }}).catch(function(err) {{
+                                console.error('Failed to copy: ', err);
+                                document.getElementById('copy-status').innerHTML = '❌ Copy failed';
+                            }});
+                        }} else {{
+                            // Fallback for older browsers
+                            const textArea = document.createElement('textarea');
+                            textArea.value = text;
+                            document.body.appendChild(textArea);
+                            textArea.select();
+                            try {{
+                                document.execCommand('copy');
+                                document.getElementById('copy-status').innerHTML = '✅ Copied!';
+                            }} catch (err) {{
+                                document.getElementById('copy-status').innerHTML = '❌ Copy failed';
+                            }}
+                            document.body.removeChild(textArea);
+                        }}
                         </script>
-                        <div style="color: green; font-size: 12px; text-align: center;">✅ Copied!</div>
-                    """, height=40)
+                        <div id="copy-status" style="color: green; font-size: 12px; text-align: center;">Copying...</div>
+                    """, height=50)
         
         format_configs = {
             'markdown': {

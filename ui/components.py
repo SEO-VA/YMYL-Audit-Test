@@ -495,7 +495,7 @@ def _create_ai_report_tab(ai_result: Dict[str, Any], content_result: Optional[Di
         with ExportManager() as export_mgr:
             export_results = export_mgr.export_all_formats(ai_report)
             if export_results['success'] and export_results['formats']:
-                _create_download_buttons(export_results['formats'])
+                _create_download_buttons(export_results['formats'], ai_report)
             else:
                 st.error("Failed to generate export formats")
                 # Fallback to markdown download
@@ -517,41 +517,37 @@ def _create_ai_report_tab(ai_result: Dict[str, Any], content_result: Optional[Di
             mime="text/markdown"
         )
     
-    # Copy section with formatted report (not in expandable box)
-    st.markdown("#### 📋 Copy Report")
-    
-    # Add copy to clipboard button
-    col1, col2 = st.columns([1, 4])
-    with col1:
-        if st.button("📋 Copy to Clipboard", help="Copy plain text for pasting into Google Docs, Word, etc."):
-            # Use JavaScript to copy to clipboard
-            st.components.v1.html(f"""
-                <script>
-                navigator.clipboard.writeText(`{ai_report.replace('`', '\\`')}`).then(function() {{
-                    console.log('Report copied to clipboard!');
-                }});
-                </script>
-                <div style="color: green; font-size: 14px;">✅ Copied to clipboard!</div>
-            """, height=50)
-    
-    with col2:
-        st.caption("💡 Use the copy button for clean pasting into Google Docs, Word, or other editors")
-    
-    # Display formatted report
-    st.markdown(ai_report)
+    # Formatted report in expandable box
+    with st.expander("📖 View Formatted Report"):
+        st.markdown(ai_report)
     
     # Raw markdown at bottom in expandable box
     with st.expander("📝 View Raw Markdown"):
         st.code(ai_report, language='markdown')
 
-def _create_download_buttons(formats: Dict[str, bytes]):
+def _create_download_buttons(formats: Dict[str, bytes], ai_report: str = None):
     """
-    Create download buttons for different formats.
-    FIXED: Robust implementation to prevent media file storage errors
+    Create download buttons for different formats with copy button as first option.
+    UPDATED: Added copy to clipboard button as first button
     """
     try:
         timestamp = int(time.time())
-        col1, col2, col3, col4 = st.columns(4)
+        col1, col2, col3, col4, col5 = st.columns(5)
+        
+        # First button: Copy to Clipboard
+        with col1:
+            if st.button("📋 Copy", help="Copy plain text for pasting into Google Docs, Word, etc.", key=f"copy_button_{timestamp}"):
+                if ai_report:
+                    # Use JavaScript to copy to clipboard
+                    st.components.v1.html(f"""
+                        <script>
+                        navigator.clipboard.writeText(`{ai_report.replace('`', '\\`')}`).then(function() {{
+                            console.log('Report copied to clipboard!');
+                        }});
+                        </script>
+                        <div style="color: green; font-size: 12px; text-align: center;">✅ Copied!</div>
+                    """, height=40)
+        
         format_configs = {
             'markdown': {
                 'label': "📝 Markdown",
@@ -578,7 +574,7 @@ def _create_download_buttons(formats: Dict[str, bytes]):
                 'extension': '.pdf'
             }
         }
-        columns = [col1, col2, col3, col4]
+        columns = [col2, col3, col4, col5]  # Skip col1 since it's used for copy button
         for i, (fmt, config) in enumerate(format_configs.items()):
             if fmt in formats and i < len(columns):
                 with columns[i]:

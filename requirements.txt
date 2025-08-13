@@ -1,5 +1,5 @@
 # YMYL Audit Tool - Requirements
-# Core application dependencies
+# Core application dependencies - SIMPLIFIED for Word-only export
 
 # Web Framework
 streamlit>=1.28.0
@@ -13,14 +13,14 @@ selenium>=4.15.0
 openai>=1.0.0
 aiohttp>=3.8.0
 
-# Document Processing & Export
+# Document Processing & Export - Word only
 python-docx>=0.8.11
-reportlab>=4.0.0
-markdown>=3.5.0
-
 
 # Utilities & Configuration
 pytz>=2023.3
+
+# UI Components
+streamlit-js-eval>=0.1.5
 
 # Optional: Testing Dependencies (uncomment for development)
 # pytest>=7.4.0
@@ -33,4 +33,6 @@ pytz>=2023.3
 # flake8>=6.0.0
 # mypy>=1.5.0
 
-streamlit-js-eval>=0.1.5
+# REMOVED DEPENDENCIES (no longer needed):
+# reportlab>=4.0.0  (was for PDF export)
+# markdown>=3.5.0   (was for HTML export)

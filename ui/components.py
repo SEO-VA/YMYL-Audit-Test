@@ -2,9 +2,8 @@
 """
 UI Components for YMYL Audit Tool
 Reusable Streamlit UI components for the application interface.
-FIXED: Proper Unicode handling in JSON display - no more encoding issues!
-NEW FEATURE: Dual input mode - URL extraction OR direct JSON input
-UPDATED: Restructured AI Compliance Report tab with copy functionality
+UPDATED: Simplified export to Word-only format with Google Docs compatibility
+REMOVED: HTML, PDF, and multi-format export options
 """
 
 import streamlit_js_eval as st_js
@@ -15,8 +14,8 @@ from datetime import datetime
 from typing import Dict, Any, Optional, List, Callable, Tuple
 from config.settings import DEFAULT_TIMEZONE
 from utils.logging_utils import log_with_timestamp
-from utils.json_utils import get_display_json_string  # FIXED: Import centralized display function
-from exporters.word_exporter import WordExporter
+from utils.json_utils import get_display_json_string
+from exporters.word_exporter import WordExporter  # UPDATED: Only Word export
 
 def create_page_header():
     """Create the main page header with title and description."""
@@ -152,7 +151,7 @@ def create_sidebar_config(debug_mode_default: bool = True) -> Dict[str, Any]:
         value=debug_mode_default, 
         help="Show detailed processing logs"
     )
-    # FIXED: Add session state management options
+    # Session state management options
     with st.sidebar.expander("🧹 Session Management"):
         if st.button("Clear All Analysis Data", help="Clear all stored analysis results"):
             keys_to_clear = [k for k in st.session_state.keys() if k.startswith(('latest_', 'ai_', 'current_url', 'processing_', 'input_'))]
@@ -187,13 +186,13 @@ def create_how_it_works_section():
     st.markdown("""
 1. **Choose Input**: Paste URL OR provide chunked content directly.
 2. **Extract Content**: Click on "🚀 Process URL" or "Validate Chunked content" to start content extraction.
-3. **YMYL Analysis**: Click on "Run AI Analysis" to start the adit.
-4. **Export**: Generate professional reports in multiple formats.
+3. **YMYL Analysis**: Click on "Run AI Analysis" to start the audit.
+4. **Download Report**: Get a perfectly formatted Word document that imports cleanly into Google Docs.
 """)
 
 def create_dual_input_section() -> Tuple[str, str, bool]:
     """
-    NEW FEATURE: Create dual input section with URL/Direct JSON toggle.
+    Create dual input section with URL/Direct JSON toggle.
     Returns:
         tuple: (input_mode, content, process_clicked)
     """
@@ -218,7 +217,7 @@ def _create_url_input_mode() -> Tuple[str, str, bool]:
     # Show current analysis context if available AND not currently processing
     current_url = st.session_state.get('current_url_analysis')
     is_processing = st.session_state.get('is_processing', False)
-    if current_url and not is_processing:  # ← Added processing check
+    if current_url and not is_processing:
         st.info(f"📋 **Currently analyzing**: {current_url}")
         # Check if we have AI results for this URL
         ai_result = st.session_state.get('ai_analysis_result')
@@ -250,7 +249,7 @@ def _create_url_input_mode() -> Tuple[str, str, bool]:
     return 'url', url, process_clicked
 
 def _create_direct_json_input_mode() -> Tuple[str, str, bool]:
-    """NEW FEATURE: Create direct JSON input interface."""
+    """Create direct JSON input interface."""
     st.markdown("**Paste your pre-chunked JSON content:**")
     # Show current analysis context for direct JSON
     current_input_mode = st.session_state.get('current_input_analysis_mode')
@@ -314,7 +313,7 @@ def create_debug_logger(placeholder) -> Callable[[str], None]:
     def log_callback(message: str):
         timestamped_msg = log_with_timestamp(message, DEFAULT_TIMEZONE)
         log_lines.append(timestamped_msg)
-        # FIXED: Limit log lines to prevent memory issues
+        # Limit log lines to prevent memory issues
         if len(log_lines) > 50:
             log_lines.pop(0)
         placeholder.info("\n".join(log_lines))
@@ -330,7 +329,7 @@ def create_simple_progress_tracker() -> tuple[Any, Callable[[str], None]]:
     milestones = []
     def update_progress(text: str):
         milestones.append(f"- {text}")
-        # FIXED: Limit milestone history
+        # Limit milestone history
         if len(milestones) > 10:
             milestones.pop(0)
         log_area.markdown("\n".join(milestones))
@@ -339,7 +338,7 @@ def create_simple_progress_tracker() -> tuple[Any, Callable[[str], None]]:
 def create_ai_analysis_section(api_key: Optional[str], json_output: Any, source_result: Optional[Dict] = None) -> bool:
     """
     Create AI analysis section with processing button.
-    ENHANCED: Works with both URL and direct JSON input modes
+    Works with both URL and direct JSON input modes
     Args:
         api_key (str): OpenAI API key
         json_output: JSON output from chunk processing or direct input (dict or string)
@@ -350,7 +349,7 @@ def create_ai_analysis_section(api_key: Optional[str], json_output: Any, source_
     if not api_key:
         st.info("💡 **Tip**: Add your OpenAI API key to enable AI compliance analysis!")
         return False
-    # ENHANCED: Show different messaging based on input mode
+    # Show different messaging based on input mode
     input_mode = st.session_state.get('input_mode', '🌐 URL Input')
     st.markdown("### ✨ AI Compliance Analysis")
     # Show analysis readiness status
@@ -415,7 +414,7 @@ def create_ai_analysis_section(api_key: Optional[str], json_output: Any, source_
 def create_content_freshness_indicator(content_result: Dict, ai_result: Optional[Dict] = None):
     """
     Create indicator showing freshness of analysis results.
-    ENHANCED: Works with both URL and direct JSON inputs
+    Works with both URL and direct JSON inputs
     Args:
         content_result (dict): Content processing result
         ai_result (dict): AI analysis result (optional)
@@ -440,14 +439,14 @@ def create_content_freshness_indicator(content_result: Dict, ai_result: Optional
 
 def create_results_tabs(result: Dict[str, Any], ai_result: Optional[Dict[str, Any]] = None):
     """
-    Create results display tabs WITH DEBUG TAB
-    ENHANCED: Shows appropriate context for URL vs Direct JSON inputs
+    Create results display tabs
+    Shows appropriate context for URL vs Direct JSON inputs
     """
     # Show freshness indicator before tabs
     if ai_result and ai_result.get('success'):
         create_content_freshness_indicator(result, ai_result)
     if ai_result and ai_result.get('success'):
-        # With AI analysis results - INCLUDES DEBUG TAB
+        # With AI analysis results
         tab1, tab2, tab3, tab4, tab5, = st.tabs([
             "🎯 AI Compliance Report", 
             "📊 Individual Analyses", 
@@ -466,7 +465,7 @@ def create_results_tabs(result: Dict[str, Any], ai_result: Optional[Dict[str, An
         with tab5:
             _create_summary_tab(result, ai_result)
     else:
-        # Without AI analysis results - ALSO HAS DEBUG TAB
+        # Without AI analysis results
         tab1, tab2, tab3, = st.tabs([
             "🎯 JSON Output", 
             "📄 Source Content", 
@@ -479,70 +478,128 @@ def create_results_tabs(result: Dict[str, Any], ai_result: Optional[Dict[str, An
         with tab3:
             _create_summary_tab(result)
 
-
 def _create_ai_report_tab(ai_result: Dict[str, Any], content_result: Optional[Dict[str, Any]] = None):
     """
     Create AI compliance report tab content.
-    SIMPLIFIED: Only Word download - works perfectly with Google Docs
+    UPDATED: Simplified to Word-only export with Google Docs instructions
     """
     st.markdown("### YMYL Compliance Analysis Report")
     ai_report = ai_result['report']
     
-    # Simplified export section - Word only
+    # Word download section
     st.markdown("#### 📄 Download Report")
     try:
-        # Generate Word document only
-        from exporters.word_exporter import WordExporter
-        
+        # Generate Word document
         word_exporter = WordExporter()
         word_bytes = word_exporter.convert(ai_report, "YMYL Compliance Audit Report")
         
-        # Create download button
+        # Download button
         timestamp = int(time.time())
         filename = f"ymyl_compliance_report_{timestamp}.docx"
         
+        # Centered download button
         col1, col2, col3 = st.columns([1, 2, 1])
-        with col2:  # Center the download button
+        with col2:
             st.download_button(
                 label="📄 Download Word Document",
                 data=word_bytes,
                 file_name=filename,
                 mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                help="Download as Word document - imports perfectly into Google Docs",
+                help="Downloads Word document that imports perfectly into Google Docs",
                 type="primary",
                 use_container_width=True
             )
         
-        st.success("✅ Word document ready! Imports cleanly into Google Docs with perfect formatting.")
+        st.success("✅ **Ready to download!** Imports cleanly into Google Docs with perfect formatting.")
+        
+        # Google Docs instructions
+        _add_google_docs_instructions()
+        
+        # Optional: Copy to clipboard functionality
+        _add_copy_functionality(ai_report)
         
     except Exception as e:
         st.error(f"Error creating Word document: {e}")
-        # Fallback to markdown download
+        # Fallback to markdown
         timestamp = int(time.time())
         st.download_button(
-            label="📝 Download Report (Markdown)",
+            label="📝 Download Report (Markdown Fallback)",
             data=ai_report,
             file_name=f"ymyl_compliance_report_{timestamp}.md",
             mime="text/markdown"
         )
     
-    # Keep the existing view options
+    # Keep existing view options
     with st.expander("📖 View Formatted Report"):
         st.markdown(ai_report)
     
     with st.expander("📝 View Raw Markdown"):
         st.code(ai_report, language='markdown')
 
-def _convert_to_google_docs_format(markdown_content: str) -> str:
-    """
-    Convert markdown report to clean, beautifully formatted text for Google Docs.
-    
-    Args:
-        markdown_content (str): Markdown content to convert
+def _add_google_docs_instructions():
+    """Add helpful instructions for Google Docs import."""
+    with st.expander("💡 How to use with Google Docs"):
+        st.markdown("""
+        **Perfect Google Docs Integration:**
         
-    Returns:
-        str: Clean, formatted text ready for Google Docs
-    """
+        1. **Download** the Word document using the button above
+        2. **Open** Google Docs in your browser (docs.google.com)
+        3. **Click** File → Import → Upload
+        4. **Select** the downloaded Word file
+        5. **Enjoy** perfectly formatted report in Google Docs!
+        
+        ✅ **All formatting preserved:** Headers, bullet points, severity colors, and styling will look exactly right.
+        
+        **Why this works better than other formats:**
+        - 🎯 Uses Word's built-in styles that Google Docs recognizes
+        - 🎨 Severity indicators show as colored text labels like `[CRITICAL]` in red
+        - 📝 No raw markdown syntax - everything is properly formatted
+        - 🔄 Easy to edit and collaborate on in Google Docs
+        """)
+
+def _add_copy_functionality(ai_report: str):
+    """Add copy to clipboard functionality."""
+    with st.expander("📋 Copy Report Text"):
+        st.markdown("**Copy formatted text for pasting into other applications:**")
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            if st.button("📋 Copy Report Text", key="copy_report_button"):
+                try:
+                    # Convert markdown to clean text for copying
+                    clean_text = _convert_markdown_to_clean_text(ai_report)
+                    
+                    # Try to copy to clipboard
+                    try:
+                        # Escape the text properly for JavaScript
+                        escaped_text = clean_text.replace('\\', '\\\\').replace('`', '\\`').replace('\n', '\\n').replace('\r', '\\r')
+                        st_js.st_js_eval(f"navigator.clipboard.writeText(`{escaped_text}`)")
+                        st.success("✅ Report text copied to clipboard!")
+                    except Exception as e:
+                        # Fallback: show text area for manual copy
+                        st.info("Copy this text manually:")
+                        st.text_area(
+                            "Report text:",
+                            value=clean_text,
+                            height=150,
+                            key="manual_copy_text",
+                            help="Select all text and copy"
+                        )
+                except Exception as e:
+                    st.error("Copy failed - showing text to copy manually:")
+                    st.text_area(
+                        "Copy this text:",
+                        value=ai_report,
+                        height=150,
+                        key="manual_copy_fallback"
+                    )
+        
+        with col2:
+            st.info("**💡 Tip:** This creates clean, formatted text perfect for pasting into emails, documents, or other applications.")
+
+def _convert_markdown_to_clean_text(markdown_content: str) -> str:
+    """Convert markdown to clean, readable text for copying."""
     import re
     
     try:
@@ -590,9 +647,9 @@ def _convert_to_google_docs_format(markdown_content: str) -> str:
                 bullet_text = line[2:].strip()
                 formatted_lines.append(f"• {bullet_text}")
             
-            # Violations with severity (🔴, 🟠, 🟡, 🔵)
+            # Violations with severity (replace emojis with text)
             elif any(emoji in line for emoji in ['🔴', '🟠', '🟡', '🔵']):
-                formatted_line = _format_violation_for_google_docs(line)
+                formatted_line = _format_severity_for_text(line)
                 formatted_lines.append(f"    {formatted_line}")
             
             # Regular paragraphs
@@ -612,16 +669,13 @@ def _convert_to_google_docs_format(markdown_content: str) -> str:
         # Fallback: basic cleanup
         return _basic_markdown_cleanup(markdown_content)
 
-
-def _format_violation_for_google_docs(line: str) -> str:
-    """Format violation lines for Google Docs."""
-    
-    # Replace emoji with text indicators
+def _format_severity_for_text(line: str) -> str:
+    """Format severity lines for plain text."""
     severity_replacements = {
-        '🔴': '● CRITICAL:',
-        '🟠': '● HIGH:',
-        '🟡': '● MEDIUM:',
-        '🔵': '● LOW:',
+        '🔴': 'CRITICAL:',
+        '🟠': 'HIGH:',
+        '🟡': 'MEDIUM:',
+        '🔵': 'LOW:',
         '✅': '✓',
         '❌': '✗',
         '⚠️': '⚠'
@@ -635,7 +689,6 @@ def _format_violation_for_google_docs(line: str) -> str:
     formatted_line = _clean_markdown_syntax(formatted_line)
     
     return formatted_line
-
 
 def _clean_markdown_syntax(text: str) -> str:
     """Remove markdown syntax while preserving formatting intent."""
@@ -656,7 +709,6 @@ def _clean_markdown_syntax(text: str) -> str:
     
     return text
 
-
 def _basic_markdown_cleanup(markdown_content: str) -> str:
     """Basic fallback cleanup if main formatting fails."""
     import re
@@ -665,18 +717,18 @@ def _basic_markdown_cleanup(markdown_content: str) -> str:
         content = markdown_content
         
         # Convert headers
-        content = re.sub(r'^# (.+)$', r'\1\n' + '=' * 50, content, flags=re.MULTILINE)
-        content = re.sub(r'^## (.+)$', r'\n\1\n' + '-' * 30, content, flags=re.MULTILINE)
-        content = re.sub(r'^### (.+)$', r'\n\1', content, flags=re.MULTILINE)
+        content = re.sub(r'^# (.+), r'\1\n' + '=' * 50, content, flags=re.MULTILINE)
+        content = re.sub(r'^## (.+), r'\n\1\n' + '-' * 30, content, flags=re.MULTILINE)
+        content = re.sub(r'^### (.+), r'\n\1', content, flags=re.MULTILINE)
         
         # Convert bullets
-        content = re.sub(r'^- (.+)$', r'• \1', content, flags=re.MULTILINE)
+        content = re.sub(r'^- (.+), r'• \1', content, flags=re.MULTILINE)
         
         # Replace emojis
-        content = content.replace('🔴', '● CRITICAL:')
-        content = content.replace('🟠', '● HIGH:')
-        content = content.replace('🟡', '● MEDIUM:')
-        content = content.replace('🔵', '● LOW:')
+        content = content.replace('🔴', 'CRITICAL:')
+        content = content.replace('🟠', 'HIGH:')
+        content = content.replace('🟡', 'MEDIUM:')
+        content = content.replace('🔵', 'LOW:')
         content = content.replace('✅', '✓')
         content = content.replace('❌', '✗')
         
@@ -714,7 +766,6 @@ def _create_individual_analyses_tab(ai_result: Dict[str, Any]):
     for detail in analysis_details:
         chunk_idx = detail.get('chunk_index', 'Unknown')
         if detail.get('success'):
-            # ✅ FIXED: Using 'detail' instead of 'result'
             readable_content = convert_violations_json_to_readable(detail["content"])
             with st.expander(f"✅ Chunk {chunk_idx} Analysis (Success)"):
                 # Tab structure: Readable + Raw
@@ -750,7 +801,6 @@ def _create_individual_analyses_tab(ai_result: Dict[str, Any]):
 def _create_json_tab(result: Dict[str, Any]):
     """
     Create JSON output tab content with proper Unicode display.
-    FIXED: Now properly displays Unicode characters using the raw decoded data
     """
     st.subheader("🔧 JSON Output")
     # Display source info
@@ -760,7 +810,7 @@ def _create_json_tab(result: Dict[str, Any]):
         st.info(f"**Source**: {source_info}")
     else:
         st.info("**Source**: Direct JSON Input")
-    # FIXED: Use the raw JSON string which has Unicode already decoded
+    # Use the raw JSON string which has Unicode already decoded
     json_output_raw = result.get('json_output_raw')
     if json_output_raw:
         # Perfect! We have the decoded raw string
@@ -814,7 +864,7 @@ def _create_json_tab(result: Dict[str, Any]):
 def _create_content_tab(result: Dict[str, Any]):
     """
     Create source content tab content.
-    ENHANCED: Shows appropriate content based on input mode
+    Shows appropriate content based on input mode
     """
     input_mode = st.session_state.get('input_mode', '🌐 URL Input')
     if input_mode == "🌐 URL Input":
@@ -836,7 +886,7 @@ def _create_content_tab(result: Dict[str, Any]):
                 total_content = 0
                 for chunk in chunks:
                     small_chunks = chunk.get('small_chunks', [])
-                    total_content += len('\n'.join(small_chunks)) # Use \n for joining
+                    total_content += len('\n'.join(small_chunks))
                 col1, col2 = st.columns(2)
                 with col1:
                     st.metric("Total Chunks Provided", len(chunks))
@@ -845,13 +895,12 @@ def _create_content_tab(result: Dict[str, Any]):
         except:
             st.warning("Could not analyze the provided JSON structure.")
 
-# --- FIXED FUNCTION BELOW ---
 def _create_summary_tab(result: Dict[str, Any], ai_result: Optional[Dict[str, Any]] = None):
     """
     Create processing summary tab content.
-    ENHANCED: Shows different metrics based on input mode
+    Shows different metrics based on input mode
     """
-    # Add the new user-friendly recap at the top
+    # Add the user-friendly recap at the top
     create_user_friendly_log_recap()
     st.markdown("---")
     st.markdown("### Technical Details")    
@@ -882,7 +931,7 @@ def _create_summary_tab(result: Dict[str, Any], ai_result: Optional[Dict[str, An
             colA, colB, colC = st.columns(3)
             colA.metric("Big Chunks", len(big_chunks))
             colB.metric("Total Small Chunks", total_small_chunks)
-            total_content = sum(len('\n'.join(chunk.get('small_chunks', []))) for chunk in big_chunks) # Use \n for joining
+            total_content = sum(len('\n'.join(chunk.get('small_chunks', []))) for chunk in big_chunks)
             colC.metric("Total Content", f"{total_content:,} chars")
         # AI Analysis metrics (if available)
         if ai_result and ai_result.get('success'):

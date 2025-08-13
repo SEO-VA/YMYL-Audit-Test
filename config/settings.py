@@ -4,7 +4,7 @@ Configuration settings for YMYL Audit Tool
 
 Centralized configuration management for all application settings.
 
-FIXED: Enhanced with settings for stale results prevention and session management
+UPDATED: Simplified export configuration - Word format only
 """
 
 # AI Processing Configuration
@@ -27,14 +27,15 @@ CHROME_OPTIONS = [
 REQUEST_TIMEOUT = 30
 USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
 
-# Export Configuration
-DEFAULT_EXPORT_FORMATS = ['html', 'docx', 'pdf', 'markdown']
+# Export Configuration - SIMPLIFIED
+DEFAULT_EXPORT_FORMAT = 'docx'  # Word format only
+SUPPORTED_EXPORT_FORMATS = ['docx']  # Only Word format supported
 MAX_PARALLEL_REQUESTS = 10
 
 # Content Processing Configuration
 MAX_CONTENT_LENGTH = 1000000  # 1MB limit for content processing
 CHUNK_POLLING_INTERVAL = 0.2  # seconds
-CHUNK_POLLING_TIMEOUT = 30    # FIXED: Increased from 10 to 30 seconds for more reliable processing
+CHUNK_POLLING_TIMEOUT = 30    # Increased from 10 to 30 seconds for more reliable processing
 
 # UI Configuration
 DEFAULT_TIMEZONE = "Europe/Malta"
@@ -44,7 +45,7 @@ DEBUG_MODE_DEFAULT = True
 LOG_FORMAT = '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 LOG_LEVEL = 'INFO'
 
-# FIXED: New settings for stale results prevention and session management
+# Session management settings
 SESSION_MANAGEMENT = {
     # Session state keys that should be cleared when starting new URL analysis
     'ANALYSIS_KEYS': [
@@ -133,11 +134,8 @@ UI_SETTINGS = {
     
     # Enable advanced debug options
     'ENABLE_DEBUG_OPTIONS': True,
-    
-    # Enable advanced debug options
-    'ENABLE_DEBUG_OPTIONS': True,
 
-    # NEW: User-friendly logging settings
+    # User-friendly logging settings
     'SIMPLE_PROGRESS_MODE': True,
     'SHOW_TECHNICAL_LOGS': False,
     'MAX_USER_FRIENDLY_MESSAGES': 5,
@@ -228,22 +226,32 @@ SECURITY = {
     }
 }
 
-# Export and Download Configuration
+# Export and Download Configuration - SIMPLIFIED
 EXPORT_CONFIG = {
     # Default filename pattern
     'FILENAME_PATTERN': 'ymyl_compliance_report_{timestamp}',
     
+    # Default format (Word only)
+    'DEFAULT_FORMAT': 'docx',
+    
+    # Supported formats (Word only)
+    'SUPPORTED_FORMATS': ['docx'],
+    
     # Include metadata in exports
     'INCLUDE_METADATA': True,
     
-    # Compression for large exports
-    'ENABLE_COMPRESSION': False,
-    
-    # Watermark for exported documents
-    'ADD_WATERMARK': True,
+    # Google Docs compatibility mode
+    'GOOGLE_DOCS_COMPATIBLE': True,
     
     # Maximum export file size before warning
-    'MAX_EXPORT_SIZE': 50 * 1024 * 1024  # 50MB
+    'MAX_EXPORT_SIZE': 50 * 1024 * 1024,  # 50MB
+    
+    # Word-specific settings
+    'WORD_SETTINGS': {
+        'USE_BUILTIN_STYLES': True,
+        'EMOJI_TO_TEXT': True,
+        'GOOGLE_DOCS_OPTIMIZED': True
+    }
 }
 
 # Development and Testing
@@ -283,8 +291,6 @@ def get_setting(key_path: str, default=None):
     """
     Get a setting value using dot notation.
     
-    FIXED: New utility function for accessing nested settings
-    
     Args:
         key_path (str): Dot-separated path to setting (e.g., 'SESSION_MANAGEMENT.ENABLE_STALE_DETECTION')
         default: Default value if setting not found
@@ -318,8 +324,6 @@ def validate_settings():
     """
     Validate configuration settings for consistency.
     
-    FIXED: New function to ensure settings are valid
-    
     Returns:
         tuple: (is_valid, errors_list)
     """
@@ -348,6 +352,10 @@ def validate_settings():
         if not (0 <= min_quality <= 1):
             errors.append("CONTENT_VALIDATION.MIN_QUALITY_SCORE must be between 0 and 1")
         
+        # Validate export settings
+        if DEFAULT_EXPORT_FORMAT not in SUPPORTED_EXPORT_FORMATS:
+            errors.append("DEFAULT_EXPORT_FORMAT must be in SUPPORTED_EXPORT_FORMATS")
+        
         return len(errors) == 0, errors
         
     except Exception as e:
@@ -357,8 +365,6 @@ def validate_settings():
 def get_timeout_config():
     """
     Get all timeout-related configuration in one place.
-    
-    FIXED: Utility function for timeout management
     
     Returns:
         dict: All timeout settings
@@ -374,19 +380,35 @@ def get_timeout_config():
     }
 
 
-# FIXED: Export important configuration groups for easy access
+def get_export_config():
+    """
+    Get export-related configuration.
+    
+    Returns:
+        dict: Export configuration
+    """
+    return {
+        'default_format': DEFAULT_EXPORT_FORMAT,
+        'supported_formats': SUPPORTED_EXPORT_FORMATS,
+        'filename_pattern': EXPORT_CONFIG.get('FILENAME_PATTERN', 'ymyl_compliance_report_{timestamp}'),
+        'google_docs_compatible': EXPORT_CONFIG.get('GOOGLE_DOCS_COMPATIBLE', True),
+        'word_settings': EXPORT_CONFIG.get('WORD_SETTINGS', {})
+    }
+
+
+# Export important configuration groups for easy access
 __all__ = [
     # Original exports
     'ANALYZER_ASSISTANT_ID', 'SELENIUM_TIMEOUT', 'CHUNK_API_URL', 'CHROME_OPTIONS',
-    'REQUEST_TIMEOUT', 'USER_AGENT', 'DEFAULT_EXPORT_FORMATS', 'MAX_PARALLEL_REQUESTS',
-    'MAX_CONTENT_LENGTH', 'CHUNK_POLLING_INTERVAL', 'CHUNK_POLLING_TIMEOUT',
-    'DEFAULT_TIMEZONE', 'DEBUG_MODE_DEFAULT', 'LOG_FORMAT', 'LOG_LEVEL',
+    'REQUEST_TIMEOUT', 'USER_AGENT', 'DEFAULT_EXPORT_FORMAT', 'SUPPORTED_EXPORT_FORMATS',
+    'MAX_PARALLEL_REQUESTS', 'MAX_CONTENT_LENGTH', 'CHUNK_POLLING_INTERVAL', 
+    'CHUNK_POLLING_TIMEOUT', 'DEFAULT_TIMEZONE', 'DEBUG_MODE_DEFAULT', 'LOG_FORMAT', 'LOG_LEVEL',
     
-    # New configuration groups
+    # Configuration groups
     'SESSION_MANAGEMENT', 'CONTENT_VALIDATION', 'AI_ANALYSIS', 'UI_SETTINGS',
     'ERROR_HANDLING', 'PERFORMANCE', 'FEATURE_FLAGS', 'SECURITY', 'EXPORT_CONFIG',
     'DEVELOPMENT', 'COMPATIBILITY',
     
     # Utility functions
-    'get_setting', 'validate_settings', 'get_timeout_config'
+    'get_setting', 'validate_settings', 'get_timeout_config', 'get_export_config'
 ]

@@ -5,7 +5,6 @@ Reusable Streamlit UI components for the application interface.
 UPDATED: Simplified export to Word-only format with Google Docs compatibility
 REMOVED: HTML, PDF, and multi-format export options
 """
-
 import streamlit_js_eval as st_js
 import streamlit as st
 import time
@@ -16,13 +15,11 @@ from config.settings import DEFAULT_TIMEZONE
 from utils.logging_utils import log_with_timestamp
 from utils.json_utils import get_display_json_string
 from exporters.word_exporter import WordExporter  # UPDATED: Only Word export
-
 def create_page_header():
     """Create the main page header with title and description."""
     st.title("🕵 YMYL Audit Tool")
     st.markdown("**Automatically extract content from websites, generate JSON chunks, and perform YMYL compliance analysis**")
     st.markdown("---")
-
 def create_user_friendly_log_recap():
     """Create a consolidated, user-friendly log recap for normal users."""
     # Check if we have any processing history in session state
@@ -74,7 +71,6 @@ def create_user_friendly_log_recap():
                     st.caption("💡 View your report in the 'AI Compliance Report' tab above")
     else:
         st.info("🚀 Ready to start! Choose your input method above and begin processing.")
-
 def track_user_error(error_type, error_message, context=""):
     """Track errors for user-friendly display later."""
     if 'user_error_history' not in st.session_state:
@@ -90,7 +86,6 @@ def track_user_error(error_type, error_message, context=""):
     # Keep only last 5 errors
     if len(st.session_state['user_error_history']) > 5:
         st.session_state['user_error_history'].pop(0)
-
 def _make_error_user_friendly(error_type, error_message):
     """Convert technical errors to user-friendly messages."""
     friendly_messages = {
@@ -106,7 +101,6 @@ def _make_error_user_friendly(error_type, error_message):
             return friendly_msg
     # Default friendly message
     return "Something went wrong, but you can try again. If the problem continues, the issue might be temporary."            
-
 def create_simple_status_updater():
     """Create a simple status updater that shows one clear message at a time."""
     if 'simple_status_container' not in st.session_state:
@@ -123,7 +117,6 @@ def create_simple_status_updater():
         elif status_type == "warning":
             container.warning(f"⚠️ {message}")
     return update_simple_status
-
 def create_sidebar_config(debug_mode_default: bool = True) -> Dict[str, Any]:
     """
     Create sidebar configuration section.
@@ -167,7 +160,6 @@ def create_sidebar_config(debug_mode_default: bool = True) -> Dict[str, Any]:
         'debug_mode': debug_mode,
         'api_key': api_key
     }
-
 def create_how_it_works_section():
     """Create the 'How it works' information section with user guidance."""
     st.subheader("ℹ️ How it works")
@@ -177,7 +169,6 @@ def create_how_it_works_section():
 3. **YMYL Analysis**: Click on "Run AI Analysis" to start the audit.
 4. **Download Report**: Get a perfectly formatted Word document that imports cleanly into Google Docs.
 """)
-
 def create_dual_input_section() -> Tuple[str, str, bool]:
     """
     Create dual input section with URL/Direct JSON toggle.
@@ -199,7 +190,6 @@ def create_dual_input_section() -> Tuple[str, str, bool]:
         return _create_url_input_mode()
     else:
         return _create_direct_json_input_mode()
-
 def _create_url_input_mode() -> Tuple[str, str, bool]:
     """Create URL input interface."""
     # Show current analysis context if available AND not currently processing
@@ -235,7 +225,6 @@ def _create_url_input_mode() -> Tuple[str, str, bool]:
             key="process_url_button"
         )
     return 'url', url, process_clicked
-
 def _create_direct_json_input_mode() -> Tuple[str, str, bool]:
     """Create direct JSON input interface."""
     st.markdown("**Paste your pre-chunked JSON content:**")
@@ -288,7 +277,6 @@ def _create_direct_json_input_mode() -> Tuple[str, str, bool]:
             disabled=not json_content.strip()
         )
     return 'direct_json', json_content, process_clicked
-
 def create_debug_logger(placeholder) -> Callable[[str], None]:
     """
     Create debug logger function for detailed logging.
@@ -306,7 +294,6 @@ def create_debug_logger(placeholder) -> Callable[[str], None]:
             log_lines.pop(0)
         placeholder.info("\n".join(log_lines))
     return log_callback
-
 def create_simple_progress_tracker() -> tuple[Any, Callable[[str], None]]:
     """
     Create simple progress tracker for non-debug mode.
@@ -322,7 +309,6 @@ def create_simple_progress_tracker() -> tuple[Any, Callable[[str], None]]:
             milestones.pop(0)
         log_area.markdown("\n".join(milestones))
     return log_area, update_progress
-
 def create_ai_analysis_section(api_key: Optional[str], json_output: Any, source_result: Optional[Dict] = None) -> bool:
     """
     Create AI analysis section with processing button.
@@ -398,7 +384,6 @@ def create_ai_analysis_section(api_key: Optional[str], json_output: Any, source_
         else:
             st.info("📝 Provide JSON content first to enable AI analysis")
         return False
-
 def create_content_freshness_indicator(content_result: Dict, ai_result: Optional[Dict] = None):
     """
     Create indicator showing freshness of analysis results.
@@ -424,7 +409,6 @@ def create_content_freshness_indicator(content_result: Dict, ai_result: Optional
             st.write(f"**AI Analysis Timestamp**: {ai_timestamp}")
             st.write(f"**Content Source**: {content_source}")
             st.write(f"**AI Analysis Source**: {ai_source}")
-
 def create_results_tabs(result: Dict[str, Any], ai_result: Optional[Dict[str, Any]] = None):
     """
     Create results display tabs
@@ -465,7 +449,6 @@ def create_results_tabs(result: Dict[str, Any], ai_result: Optional[Dict[str, An
             _create_content_tab(result)
         with tab3:
             _create_summary_tab(result)
-
 def _create_ai_report_tab(ai_result: Dict[str, Any], content_result: Optional[Dict[str, Any]] = None):
     """
     Create AI compliance report tab content.
@@ -473,18 +456,15 @@ def _create_ai_report_tab(ai_result: Dict[str, Any], content_result: Optional[Di
     """
     st.markdown("### YMYL Compliance Analysis Report")
     ai_report = ai_result['report']
-    
     # Word download section
     st.markdown("#### 📄 Download Report")
     try:
         # Generate Word document
         word_exporter = WordExporter()
         word_bytes = word_exporter.convert(ai_report, "YMYL Compliance Audit Report")
-        
         # Download button
         timestamp = int(time.time())
         filename = f"ymyl_compliance_report_{timestamp}.docx"
-        
         # Centered download button
         col1, col2, col3 = st.columns([1, 2, 1])
         with col2:
@@ -497,15 +477,11 @@ def _create_ai_report_tab(ai_result: Dict[str, Any], content_result: Optional[Di
                 type="primary",
                 use_container_width=True
             )
-        
         st.success("✅ **Ready to download!** Imports cleanly into Google Docs with perfect formatting.")
-        
         # Google Docs instructions
         _add_google_docs_instructions()
-        
         # Optional: Copy to clipboard functionality
         _add_copy_functionality(ai_report)
-        
     except Exception as e:
         st.error(f"Error creating Word document: {e}")
         # Fallback to markdown
@@ -516,48 +492,38 @@ def _create_ai_report_tab(ai_result: Dict[str, Any], content_result: Optional[Di
             file_name=f"ymyl_compliance_report_{timestamp}.md",
             mime="text/markdown"
         )
-    
     # Keep existing view options
     with st.expander("📖 View Formatted Report"):
         st.markdown(ai_report)
-    
     with st.expander("📝 View Raw Markdown"):
         st.code(ai_report, language='markdown')
-
 def _add_google_docs_instructions():
     """Add helpful instructions for Google Docs import."""
     with st.expander("💡 How to use with Google Docs"):
         st.markdown("""
         **Perfect Google Docs Integration:**
-        
         1. **Download** the Word document using the button above
         2. **Open** Google Docs in your browser (docs.google.com)
         3. **Click** File → Import → Upload
         4. **Select** the downloaded Word file
         5. **Enjoy** perfectly formatted report in Google Docs!
-        
         ✅ **All formatting preserved:** Headers, bullet points, severity colors, and styling will look exactly right.
-        
         **Why this works better than other formats:**
         - 🎯 Uses Word's built-in styles that Google Docs recognizes
         - 🎨 Severity indicators show as colored text labels like `[CRITICAL]` in red
         - 📝 No raw markdown syntax - everything is properly formatted
         - 🔄 Easy to edit and collaborate on in Google Docs
         """)
-
 def _add_copy_functionality(ai_report: str):
     """Add copy to clipboard functionality."""
     with st.expander("📋 Copy Report Text"):
         st.markdown("**Copy formatted text for pasting into other applications:**")
-        
         col1, col2 = st.columns(2)
-        
         with col1:
             if st.button("📋 Copy Report Text", key="copy_report_button"):
                 try:
                     # Convert markdown to clean text for copying
                     clean_text = _convert_markdown_to_clean_text(ai_report)
-                    
                     # Try to copy to clipboard
                     try:
                         # Escape the text properly for JavaScript
@@ -582,81 +548,65 @@ def _add_copy_functionality(ai_report: str):
                         height=150,
                         key="manual_copy_fallback"
                     )
-        
         with col2:
             st.info("**💡 Tip:** This creates clean, formatted text perfect for pasting into emails, documents, or other applications.")
-
 def _convert_markdown_to_clean_text(markdown_content: str) -> str:
     """Convert markdown to clean, readable text for copying."""
     import re
-    
     try:
         lines = markdown_content.split('\n')
         formatted_lines = []
-        
         for line in lines:
             if not line.strip():
                 formatted_lines.append('')
                 continue
-            
             # Main title (# Title)
             if line.startswith('# '):
                 title = line[2:].strip()
                 formatted_lines.append(f"{title}")
                 formatted_lines.append('=' * len(title))
-            
             # Section headers (## Section)
             elif line.startswith('## '):
                 header = line[3:].strip()
                 formatted_lines.append('')
                 formatted_lines.append(f"{header}")
                 formatted_lines.append('-' * len(header))
-            
             # Subsection headers (### Subsection)
             elif line.startswith('### '):
                 subheader = line[4:].strip()
                 formatted_lines.append('')
                 formatted_lines.append(f"{subheader}")
-            
             # Horizontal rules (---)
             elif line.startswith('---'):
                 formatted_lines.append('')
-                formatted_lines.append('─' * 60)
+                formatted_lines.append('-' * 60)
                 formatted_lines.append('')
-            
             # Bold text (**text**)
             elif line.startswith('**') and line.endswith('**'):
                 bold_text = line[2:-2].strip()
                 formatted_lines.append('')
                 formatted_lines.append(f"{bold_text.upper()}")
-            
             # Bullet points (- item)
             elif line.startswith('- '):
                 bullet_text = line[2:].strip()
-                formatted_lines.append(f"• {bullet_text}")
-            
+                formatted_lines.append(f"* {bullet_text}") # Changed bullet point character
             # Violations with severity (replace emojis with text)
             elif any(emoji in line for emoji in ['🔴', '🟠', '🟡', '🔵']):
                 formatted_line = _format_severity_for_text(line)
                 formatted_lines.append(f"    {formatted_line}")
-            
             # Regular paragraphs
             else:
                 # Clean markdown syntax
                 clean_line = _clean_markdown_syntax(line)
                 if clean_line.strip():
                     formatted_lines.append(clean_line)
-        
         # Join and clean up excessive whitespace
         result = '\n'.join(formatted_lines)
-        result = re.sub(r'\n{3,}', '\n\n', result)
-        
+        result = re.sub(r'\n{3,}', '\n\n', result) # Adjusted for consistent newlines
         return result.strip()
-        
     except Exception as e:
         # Fallback: basic cleanup
         return _basic_markdown_cleanup(markdown_content)
-
 def _format_severity_for_text(line: str) -> str:
     """Format severity lines for plain text."""
     severity_replacements = {
@@ -664,75 +614,56 @@ def _format_severity_for_text(line: str) -> str:
         '🟠': 'HIGH:',
         '🟡': 'MEDIUM:',
         '🔵': 'LOW:',
-        '✅': '✓',
-        '❌': '✗',
-        '⚠️': '⚠'
+        '✅': 'OK',
+        '❌': 'FAIL',
+        '⚠️': 'WARN'
     }
-    
     formatted_line = line
     for emoji, replacement in severity_replacements.items():
         formatted_line = formatted_line.replace(emoji, replacement)
-    
     # Clean up any remaining markdown
     formatted_line = _clean_markdown_syntax(formatted_line)
-    
     return formatted_line
-
 def _clean_markdown_syntax(text: str) -> str:
     """Remove markdown syntax while preserving formatting intent."""
     import re
-    
     # Remove bold/italic markers but keep the text
     text = re.sub(r'\*\*(.*?)\*\*', r'\1', text)  # **bold** → bold
     text = re.sub(r'\*(.*?)\*', r'\1', text)      # *italic* → italic
-    
     # Remove link syntax but keep the text
     text = re.sub(r'\[([^\]]+)\]\([^\)]+\)', r'\1', text)  # [text](url) → text
-    
     # Remove code syntax
     text = re.sub(r'`([^`]+)`', r'\1', text)  # `code` → code
-    
     # Clean up extra spaces
     text = re.sub(r'\s+', ' ', text).strip()
-    
     return text
-
 def _basic_markdown_cleanup(markdown_content: str) -> str:
     """Basic fallback cleanup if main formatting fails."""
     import re
-    
     try:
         content = markdown_content
-        
         # Convert headers
         content = re.sub(r'^# (.+)$', r'\1\n' + '=' * 50, content, flags=re.MULTILINE)
         content = re.sub(r'^## (.+)$', r'\n\1\n' + '-' * 30, content, flags=re.MULTILINE)
         content = re.sub(r'^### (.+)$', r'\n\1', content, flags=re.MULTILINE)
-        
         # Convert bullets
-        content = re.sub(r'^- (.+), r'• \1', content, flags=re.MULTILINE)
-        
+        content = re.sub(r'^- (.+)', r'* \1', content, flags=re.MULTILINE) # Changed bullet point character
         # Replace emojis
         content = content.replace('🔴', 'CRITICAL:')
         content = content.replace('🟠', 'HIGH:')
         content = content.replace('🟡', 'MEDIUM:')
         content = content.replace('🔵', 'LOW:')
-        content = content.replace('✅', '✓')
-        content = content.replace('❌', '✗')
-        
+        content = content.replace('✅', 'OK')
+        content = content.replace('❌', 'FAIL')
         # Remove remaining markdown
         content = re.sub(r'\*\*(.*?)\*\*', r'\1', content)
         content = re.sub(r'\*(.*?)\*', r'\1', content)
         content = re.sub(r'`([^`]+)`', r'\1', content)
-        
         # Clean up spacing
-        content = re.sub(r'\n{3,}', '\n\n', content)
-        
+        content = re.sub(r'\n{3,}', '\n\n', content) # Adjusted for consistent newlines
         return content.strip()
-        
     except Exception as e:
         return markdown_content
-
 def _create_individual_analyses_tab(ai_result: Dict[str, Any]):
     """Create individual analyses tab with both readable format and raw AI output."""
     from utils.json_utils import convert_violations_json_to_readable
@@ -776,16 +707,15 @@ def _create_individual_analyses_tab(ai_result: Dict[str, Any]):
                             parsed = json.loads(detail['content'])
                             violation_count = len(parsed.get('violations', []))
                             st.write(f"**Violations Found:** {violation_count}")
-                            st.write(f"**Valid JSON:** ✅ Yes")
+                            st.write(f"**Valid JSON:** OK") # Changed emoji
                         except:
-                            st.write(f"**Violations Found:** ❌ Parse Error")
-                            st.write(f"**Valid JSON:** ❌ No")
+                            st.write(f"**Violations Found:** Parse Error") # Changed emoji
+                            st.write(f"**Valid JSON:** No") # Changed emoji
         else:
-            with st.expander(f"❌ Chunk {chunk_idx} Analysis (Failed)"):
+            with st.expander(f"FAIL Chunk {chunk_idx} Analysis (Failed)"): # Changed emoji
                 st.error(f"Error: {detail.get('error', 'Unknown error')}")
                 if 'processing_time' in detail:
                     st.caption(f"Processing time: {detail['processing_time']:.2f}s")
-
 def _create_json_tab(result: Dict[str, Any]):
     """
     Create JSON output tab content with proper Unicode display.
@@ -803,18 +733,18 @@ def _create_json_tab(result: Dict[str, Any]):
     if json_output_raw:
         # Perfect! We have the decoded raw string
         display_json = json_output_raw
-        st.success("✅ Using decoded raw JSON data")
+        st.success("✅ Using decoded raw JSON data") # Kept emoji as it's standard
     else:
         # Fallback: convert dict back to pretty JSON string
         json_output_dict = result.get('json_output')
         if json_output_dict:
             from utils.json_utils import get_display_json_string
             display_json = get_display_json_string(json_output_dict)
-            st.warning("⚠️ Using fallback conversion from dict")
+            st.warning("⚠️ Using fallback conversion from dict") # Kept emoji as it's standard
         else:
             # Last resort
             display_json = '{"error": "No JSON data found"}'
-            st.error("❌ No JSON data available")
+            st.error("❌ No JSON data available") # Kept emoji as it's standard
     # Display content
     st.markdown("**Processed JSON Content:**")
     st.code(display_json, language='json')
@@ -830,14 +760,14 @@ def _create_json_tab(result: Dict[str, Any]):
     if display_json:
         char_count = len(display_json)
         unicode_count = display_json.count('\\u')
-        with st.expander("🔍 Content Info"):
+        with st.expander("🔍 Content Info"): # Kept emoji as it's standard
             st.write(f"**Content Length**: {char_count:,} characters")
             st.write(f"**Unicode Escapes Found**: {unicode_count}")
             st.write(f"**Data Source**: {'json_output_raw' if json_output_raw else 'converted from dict'}")
             if unicode_count == 0:
-                st.success("✅ All Unicode characters properly decoded and readable")
+                st.success("✅ All Unicode characters properly decoded and readable") # Kept emoji as it's standard
             else:
-                st.warning(f"⚠️ {unicode_count} Unicode escape sequences still present")
+                st.warning(f"⚠️ {unicode_count} Unicode escape sequences still present") # Kept emoji as it's standard
             # Show sample with Japanese characters
             sample = display_json[:400] + "..." if len(display_json) > 400 else display_json
             st.code(sample, language='json')
@@ -845,10 +775,9 @@ def _create_json_tab(result: Dict[str, Any]):
             japanese_chars = ['マ', 'カ', 'オ', 'ゲ', 'ー', 'ミ', 'ン', 'グ']
             found_japanese = [char for char in japanese_chars if char in display_json]
             if found_japanese:
-                st.success(f"✅ Japanese characters detected: {', '.join(found_japanese[:5])}")
+                st.success(f"✅ Japanese characters detected: {', '.join(found_japanese[:5])}") # Kept emoji as it's standard
             else:
-                st.info("ℹ️ No Japanese characters found in sample")
-
+                st.info("ℹ️ No Japanese characters found in sample") # Kept emoji as it's standard
 def _create_content_tab(result: Dict[str, Any]):
     """
     Create source content tab content.
@@ -882,7 +811,6 @@ def _create_content_tab(result: Dict[str, Any]):
                     st.metric("Total Content Length", f"{total_content:,} chars")
         except:
             st.warning("Could not analyze the provided JSON structure.")
-
 def _create_summary_tab(result: Dict[str, Any], ai_result: Optional[Dict[str, Any]] = None):
     """
     Create processing summary tab content.
@@ -937,23 +865,22 @@ def _create_summary_tab(result: Dict[str, Any], ai_result: Optional[Dict[str, An
             is_fresh = (content_timestamp == ai_timestamp)
             colH, colI = st.columns(2)
             with colH:
-                freshness_status = "Fresh ✅" if is_fresh else "Stale ⚠️"
+                freshness_status = "Fresh OK" if is_fresh else "Stale WARN" # Changed text/emoji
                 st.metric("Result Freshness", freshness_status)
             with colI:
                 source_match = result.get('url', 'Direct JSON Input') == ai_result.get('source_url', '')
-                source_status = "Match ✅" if source_match else "Different Source"
+                source_status = "Match OK" if source_match else "Different Source" # Changed text/emoji
                 st.metric("Source", source_status)
             # Performance insights
             if stats.get('total_processing_time', 0) > 0 and stats.get('total_chunks', 0) > 0:
                 avg_time = stats['total_processing_time'] / stats['total_chunks']
                 efficiency = "High" if stats['total_processing_time'] < stats['total_chunks'] * 2 else "Moderate"
-                st.info(f"📊 **Performance**: Average {avg_time:.2f}s per chunk | Parallel efficiency: {efficiency}")
+                st.info(f"📊 **Performance**: Average {avg_time:.2f}s per chunk | Parallel efficiency: {efficiency}") # Kept emoji as it's standard
     except (json.JSONDecodeError, TypeError, KeyError) as e:
         st.warning(f"Could not parse JSON for statistics: {e}")
     # Show source information
     source_info = result.get('url', 'Direct JSON Input')
     st.info(f"**Source**: {source_info}")
-
 def create_ai_processing_interface(json_output: str, api_key: str, chunks: List[Dict[str, Any]]) -> Dict[str, Any]:
     """
     Create enhanced AI processing interface with real-time updates.
@@ -965,17 +892,17 @@ def create_ai_processing_interface(json_output: str, api_key: str, chunks: List[
         dict: Processing results
     """
     # Enhanced processing logs section
-    st.subheader("🔍 Processing Logs")
+    st.subheader("🔍 Processing Logs") # Kept emoji as it's standard
     log_container = st.container()
     with log_container:
-        st.info(f"🚀 Starting AI analysis of {len(chunks)} chunks...")
+        st.info(f"🚀 Starting AI analysis of {len(chunks)} chunks...") # Kept emoji as it's standard
         st.write("**Configuration:**")
         col1, col2 = st.columns(2)
         with col1:
             st.write("- Analysis Engine: OpenAI Assistant API")
             st.write("- Processing Mode: Parallel")
         with col2:
-            st.write(f"- API Key: {'✅ Valid' if api_key.startswith('sk-') else '❌ Invalid'}")
+            st.write(f"- API Key: {'✅ Valid' if api_key.startswith('sk-') else '❌ Invalid'}") # Kept emoji as it's standard
             st.write(f"- Total Chunks: {len(chunks)}")
         st.write("**Chunk Details:**")
         for i, chunk in enumerate(chunks[:5]):  # Show first 5 chunks
@@ -990,7 +917,6 @@ def create_ai_processing_interface(json_output: str, api_key: str, chunks: List[
         'status_container': status_container,
         'log_container': log_container
     }
-
 def display_error_message(error: str, error_type: str = "Error"):
     """Display formatted error message and track for recap."""
     # Track the error
@@ -1001,21 +927,18 @@ def display_error_message(error: str, error_type: str = "Error"):
         user_friendly_msg = latest_error['user_friendly']
         st.error(f"**{error_type}**: {user_friendly_msg}")
         # Show technical details in expander for advanced users
-        with st.expander("🔧 Technical Details (for troubleshooting)"):
+        with st.expander("🔧 Technical Details (for troubleshooting)"): # Kept emoji as it's standard
             st.code(f"Original error: {error}")
             st.caption(f"Time: {latest_error['timestamp']}")
     else:
         # Fallback to original behavior
         st.error(f"**{error_type}**: {error}")
-
 def display_success_message(message: str):
     """Display formatted success message."""
     st.success(message)
-
-def create_info_panel(title: str, content: str, icon: str = "ℹ️"):
+def create_info_panel(title: str, content: str, icon: str = "ℹ️"): # Kept emoji as it's standard
     """Create an information panel."""
     st.info(f"{icon} **{title}**: {content}")
-
 def get_input_mode_display_name(mode: str) -> str:
     """Convert internal input mode to display name."""
     mode_map = {
@@ -1023,7 +946,6 @@ def get_input_mode_display_name(mode: str) -> str:
         'direct_json': 'Direct JSON Input'
     }
     return mode_map.get(mode, mode)
-
 # Backward compatibility - keep old function name
 def create_url_input_section() -> tuple[str, bool]:
     """

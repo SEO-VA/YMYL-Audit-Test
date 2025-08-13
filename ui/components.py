@@ -717,7 +717,7 @@ def _basic_markdown_cleanup(markdown_content: str) -> str:
         content = markdown_content
         
         # Convert headers
-        content = re.sub(r'^# (.+), r'\1\n' + '=' * 50, content, flags=re.MULTILINE)
+        content = re.sub(r'^# (.+)$', r'\1\n' + '=' * 50, content, flags=re.MULTILINE)
         content = re.sub(r'^## (.+), r'\n\1\n' + '-' * 30, content, flags=re.MULTILINE)
         content = re.sub(r'^### (.+), r'\n\1', content, flags=re.MULTILINE)
         

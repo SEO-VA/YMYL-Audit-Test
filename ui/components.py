@@ -483,9 +483,14 @@ def _create_ai_report_tab(ai_result: Dict[str, Any], content_result: Optional[Di
     """
     Create AI compliance report tab content.
     UPDATED: Restructured layout with copy functionality and downloads at top
+    NEW: Added HTML preview expander that renders exactly like the downloaded HTML
     """
+    import streamlit.components.v1 as components
+    from exporters.html_exporter import HTMLExporter
+    
     st.markdown("### YMYL Compliance Analysis Report")
     ai_report = ai_result['report']
+    
     # Export section (moved to top)
     st.markdown("#### 📄 Download Formats")
     try:
@@ -514,14 +519,30 @@ def _create_ai_report_tab(ai_result: Dict[str, Any], content_result: Optional[Di
             file_name=f"ymyl_compliance_report_{timestamp}.md",
             mime="text/markdown"
         )
+    
     # Formatted report in expandable box
     with st.expander("📖 View Formatted Report"):
         st.markdown(ai_report)
+    
     # Raw markdown at bottom in expandable box
     with st.expander("📝 View Raw Markdown"):
         st.code(ai_report, language='markdown')
+    
+    # NEW: HTML Preview - exactly as it would appear in browser
+    with st.expander("🌐 Preview HTML Report"):
+        try:
+            # Generate HTML using the same exporter as downloads
+            html_exporter = HTMLExporter()
+            html_bytes = html_exporter.convert(ai_report, "YMYL Compliance Audit Report")
+            html_string = html_bytes.decode('utf-8')
+            
+            # Render the HTML exactly as it would appear in browser
+            components.html(html_string, height=600, scrolling=True)
+            
+        except Exception as e:
+            st.error(f"Error generating HTML preview: {e}")
+            st.info("HTML preview unavailable, but you can still download the HTML file above.")
 
-# --- UPDATED COPY BUTTON FUNCTION ---
 def _create_download_buttons(formats: Dict[str, bytes], ai_report: str = None):
     """
     Create download buttons for different formats with copy button for Google Docs formatted text.

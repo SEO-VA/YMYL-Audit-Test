@@ -5,7 +5,6 @@ Reusable Streamlit UI components for the application interface.
 FIXED: Proper Unicode handling in JSON display - no more encoding issues!
 NEW FEATURE: Dual input mode - URL extraction OR direct JSON input
 UPDATED: Restructured AI Compliance Report tab with copy functionality
-FIXED: Removed try/except blocks that were hiding errors in download buttons
 """
 import streamlit as st
 import time
@@ -491,23 +490,32 @@ def _create_ai_report_tab(ai_result: Dict[str, Any], content_result: Optional[Di
     
     # Export section (moved to top)
     st.markdown("#### 📄 Download Formats")
-    st.write("🔍 DEBUG: About to call _create_download_buttons")
-    st.write(f"ai_report length: {len(ai_report)}")
-    
-    with ExportManager() as export_mgr:
-        export_results = export_mgr.export_all_formats(ai_report)
-        if export_results['success'] and export_results['formats']:
-            _create_download_buttons(export_results['formats'], ai_report)
-        else:
-            st.error("Failed to generate export formats")
-            # Fallback to markdown download
-            timestamp = int(time.time())
-            st.download_button(
-                label="💾 Download Report (Markdown)",
-                data=ai_report,
-                file_name=f"ymyl_compliance_report_{timestamp}.md",
-                mime="text/markdown"
-            )
+    try:
+        # Create export manager and generate all formats
+        with ExportManager() as export_mgr:
+            export_results = export_mgr.export_all_formats(ai_report)
+            if export_results['success'] and export_results['formats']:
+                _create_download_buttons(export_results['formats'], ai_report)
+            else:
+                st.error("Failed to generate export formats")
+                # Fallback to markdown download
+                timestamp = int(time.time())
+                st.download_button(
+                    label="💾 Download Report (Markdown)",
+                    data=ai_report,
+                    file_name=f"ymyl_compliance_report_{timestamp}.md",
+                    mime="text/markdown"
+                )
+    except Exception as e:
+        st.error(f"Error creating export formats: {e}")
+        # Fallback download
+        timestamp = int(time.time())
+        st.download_button(
+            label="💾 Download Report (Markdown)",
+            data=ai_report,
+            file_name=f"ymyl_compliance_report_{timestamp}.md",
+            mime="text/markdown"
+        )
     
     # Formatted report in expandable box
     with st.expander("📖 View Formatted Report"):
@@ -520,78 +528,114 @@ def _create_ai_report_tab(ai_result: Dict[str, Any], content_result: Optional[Di
 def _create_download_buttons(formats: Dict[str, bytes], ai_report: str = None):
     """
     Create download buttons for different formats with copy button as first option.
-    FIXED: Removed try/except blocks that were hiding errors
+    UPDATED: Added copy to clipboard button as first button
     """
-    st.write("🔍 FUNCTION CALLED - Starting _create_download_buttons")
-    st.write(f"formats: {type(formats)}, ai_report: {type(ai_report)}")
-    st.write(f"ai_report length: {len(ai_report) if ai_report else 'None'}")
-    
-    timestamp = int(time.time())
-    col1, col2, col3, col4, col5 = st.columns(5)
-    
-    with col1:
-        st.write("🔍 DEBUG: In copy button column")
-        st.write(f"timestamp: {timestamp}")
+    try:
+        timestamp = int(time.time())
+        col1, col2, col3, col4, col5 = st.columns(5)
         
-        # Simple test button
-        if st.button("TEST", key=f"simple_test_{timestamp}"):
-            st.write("✅ Test button clicked!")
-            
-        # Copy button
-        if st.button("📋 Copy", key=f"copy_btn_{timestamp}"):
-            st.success("Copy button clicked!")
-            if ai_report:
-                st.text_area(
-                    "Copy this text:",
-                    value=ai_report,
-                    height=200,
-                    help="Select all (Ctrl+A) and copy (Ctrl+C)",
-                    key=f"copy_area_{timestamp}"
-                )
-            else:
-                st.error("No report to copy")
-    
-    format_configs = {
-        'markdown': {
-            'label': "📝 Markdown",
-            'mime': "text/markdown",
-            'help': "Original markdown format - perfect for copying to other platforms",
-            'extension': '.md'
-        },
-        'html': {
-            'label': "🌐 HTML", 
-            'mime': "text/html",
-            'help': "Styled HTML document - opens in any web browser",
-            'extension': '.html'
-        },
-        'docx': {
-            'label': "📄 Word",
-            'mime': "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-            'help': "Microsoft Word document - ready for editing and sharing",
-            'extension': '.docx'
-        },
-        'pdf': {
-            'label': "📋 PDF",
-            'mime': "application/pdf", 
-            'help': "Professional PDF document - perfect for presentations and archival",
-            'extension': '.pdf'
+            # Copy button with JavaScript clipboard
+            if st.button("📋 Copy", key=f"copy_btn_{timestamp}"):
+                if ai_report:
+                    # Use JavaScript to actually copy to clipboard
+                    import base64
+                    encoded_report = base64.b64encode(ai_report.encode('utf-8')).decode('ascii')
+                    
+                    st.components.v1.html(f"""
+                        <script>
+                        const encodedText = '{encoded_report}';
+                        const text = atob(encodedText);
+                        
+                        if (navigator.clipboard && window.isSecureContext) {{
+                            navigator.clipboard.writeText(text).then(function() {{
+                                document.getElementById('copy-status').innerHTML = '✅ Copied to clipboard!';
+                                document.getElementById('copy-status').style.color = 'green';
+                            }}).catch(function(err) {{
+                                document.getElementById('copy-status').innerHTML = '❌ Copy failed: ' + err.message;
+                                document.getElementById('copy-status').style.color = 'red';
+                            }});
+                        }} else {{
+                            // Fallback for older browsers
+                            const textArea = document.createElement('textarea');
+                            textArea.value = text;
+                            document.body.appendChild(textArea);
+                            textArea.select();
+                            try {{
+                                document.execCommand('copy');
+                                document.getElementById('copy-status').innerHTML = '✅ Copied to clipboard!';
+                                document.getElementById('copy-status').style.color = 'green';
+                            }} catch (err) {{
+                                document.getElementById('copy-status').innerHTML = '❌ Copy failed';
+                                document.getElementById('copy-status').style.color = 'red';
+                            }}
+                            document.body.removeChild(textArea);
+                        }}
+                        </script>
+                        <div id="copy-status" style="font-size: 12px; text-align: center; margin-top: 5px;">Copying...</div>
+                    """, height=60)
+                else:
+                    st.error("No report to copy")
+        
+        format_configs = {
+            'markdown': {
+                'label': "📝 Markdown",
+                'mime': "text/markdown",
+                'help': "Original markdown format - perfect for copying to other platforms",
+                'extension': '.md'
+            },
+            'html': {
+                'label': "🌐 HTML", 
+                'mime': "text/html",
+                'help': "Styled HTML document - opens in any web browser",
+                'extension': '.html'
+            },
+            'docx': {
+                'label': "📄 Word",
+                'mime': "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                'help': "Microsoft Word document - ready for editing and sharing",
+                'extension': '.docx'
+            },
+            'pdf': {
+                'label': "📋 PDF",
+                'mime': "application/pdf", 
+                'help': "Professional PDF document - perfect for presentations and archival",
+                'extension': '.pdf'
+            }
         }
-    }
-    
-    columns = [col2, col3, col4, col5]  # Skip col1 since it's used for copy button
-    for i, (fmt, config) in enumerate(format_configs.items()):
-        if fmt in formats and i < len(columns):
-            with columns[i]:
-                filename = f"ymyl_compliance_report_{timestamp}{config['extension']}"
-                button_key = f"download_{fmt}_{timestamp}_{hash(str(formats[fmt]))}"
+        columns = [col2, col3, col4, col5]  # Skip col1 since it's used for copy button
+        for i, (fmt, config) in enumerate(format_configs.items()):
+            if fmt in formats and i < len(columns):
+                with columns[i]:
+                    try:
+                        filename = f"ymyl_compliance_report_{timestamp}{config['extension']}"
+                        # FIXED: Use unique key for each download button to prevent conflicts
+                        button_key = f"download_{fmt}_{timestamp}_{hash(str(formats[fmt]))}"
+                        st.download_button(
+                            label=config['label'],
+                            data=formats[fmt],
+                            file_name=filename,
+                            mime=config['mime'],
+                            help=config['help'],
+                            key=button_key  # Unique key to prevent media file conflicts
+                        )
+                    except Exception as e:
+                        # If individual download button fails, show error but continue
+                        st.error(f"Error creating {fmt.upper()} download: {str(e)[:50]}...")
+    except Exception as e:
+        # If entire download section fails, provide fallback
+        st.error("Error creating download buttons. Please try refreshing the page.")
+        # Provide simple fallback download for markdown
+        if 'markdown' in formats:
+            try:
                 st.download_button(
-                    label=config['label'],
-                    data=formats[fmt],
-                    file_name=filename,
-                    mime=config['mime'],
-                    help=config['help'],
-                    key=button_key
+                    label="📝 Download Report (Markdown)",
+                    data=formats['markdown'],
+                    file_name=f"ymyl_report_backup_{int(time.time())}.md",
+                    mime="text/markdown",
+                    key=f"backup_download_{int(time.time())}"
                 )
+            except:
+                st.write("Please refresh the page to access downloads.")
 
 def _create_individual_analyses_tab(ai_result: Dict[str, Any]):
     """Create individual analyses tab with both readable format and raw AI output."""
@@ -745,6 +789,7 @@ def _create_content_tab(result: Dict[str, Any]):
         except:
             st.warning("Could not analyze the provided JSON structure.")
 
+# --- FIXED FUNCTION BELOW ---
 def _create_summary_tab(result: Dict[str, Any], ai_result: Optional[Dict[str, Any]] = None):
     """
     Create processing summary tab content.
@@ -877,6 +922,7 @@ def display_success_message(message: str):
 def create_info_panel(title: str, content: str, icon: str = "ℹ️"):
     """Create an information panel."""
     st.info(f"{icon} **{title}**: {content}")
+
 
 def get_input_mode_display_name(mode: str) -> str:
     """Convert internal input mode to display name."""

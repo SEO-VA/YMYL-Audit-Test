@@ -814,5 +814,4 @@ def process_raw_content_workflow(raw_content: str, debug_mode: bool = False) -> 
                 st.info(f"🧹 Cleared previous analysis data for fresh start ({cleared_count} items)")
         
         # Setup logging based on mode
-        if debug_mode:
-            
+            aif debug_mode:

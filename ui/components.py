@@ -535,24 +535,20 @@ def _create_download_buttons(formats: Dict[str, bytes], ai_report: str = None):
         col1, col2, col3, col4, col5 = st.columns(5)
         
         with col1:
-            # Debug: Check if ai_report exists
-            if ai_report:
-                st.write(f"Debug: Report length = {len(ai_report)}")
-            else:
-                st.write("Debug: ai_report is None or empty")
+            st.write("🔍 DEBUG: In copy button column")
+            st.write(f"ai_report length: {len(ai_report) if ai_report else 'None'}")
             
-            if st.button("📋 Show Copy Text", help="Show text to copy manually", key=f"show_copy_{timestamp}"):
+            # Simple test button
+            if st.button("TEST", key=f"simple_test_{timestamp}"):
+                st.write("✅ Button clicked!")
+                
+            # Your copy button
+            if st.button("📋 Show Copy Text", key=f"show_copy_{timestamp}"):
+                st.write("✅ Copy button clicked!")
                 if ai_report:
-                    st.success("Button clicked and ai_report exists!")
-                    st.text_area(
-                        "Copy this text:",
-                        value=ai_report,
-                        height=200,
-                        help="Select all (Ctrl+A) and copy (Ctrl+C)",
-                        key=f"copy_area_{timestamp}"
-                    )
+                    st.write(f"Report preview: {ai_report[:100]}...")
                 else:
-                    st.error("ai_report is None or empty")
+                    st.write("❌ ai_report is empty")
         
         format_configs = {
             'markdown': {

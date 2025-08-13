@@ -521,11 +521,11 @@ def _create_ai_report_tab(ai_result: Dict[str, Any], content_result: Optional[Di
     with st.expander("📝 View Raw Markdown"):
         st.code(ai_report, language='markdown')
 
-# --- UPDATED FUNCTION ---
+# --- UPDATED COPY BUTTON FUNCTION ---
 def _create_download_buttons(formats: Dict[str, bytes], ai_report: str = None):
     """
-    Create download buttons for different formats with copy button as first option.
-    UPDATED: Added copy to clipboard button as first button using streamlit_js_eval
+    Create download buttons for different formats with copy button for Google Docs formatted text.
+    UPDATED: Copy button now provides clean, formatted text perfect for Google Docs
     """
     try:
         timestamp = int(time.time())
@@ -533,17 +533,33 @@ def _create_download_buttons(formats: Dict[str, bytes], ai_report: str = None):
         
         # --- Updated Copy Button Implementation ---
         with col1:
-            # Copy button with streamlit_js_eval (simple version)
+            # Copy button with Google Docs formatting
             if st.button("📋 Copy", key=f"copy_btn_{timestamp}"):
                 if ai_report:
                     try:
-                        import streamlit_js_eval as st_js
+                        # Convert markdown to Google Docs friendly format
+                        formatted_text = _convert_to_google_docs_format(ai_report)
                         
-                        # Escape the text properly for JavaScript
-                        escaped_text = ai_report.replace('\\', '\\\\').replace('`', '\\`').replace('\n', '\\n').replace('\r', '\\r')
-                        
-                        st_js.st_js_eval(f"navigator.clipboard.writeText(`{escaped_text}`)")
-                        st.success("✅ Copied to clipboard!")
+                        # Try to copy to clipboard
+                        try:
+                            import streamlit_js_eval as st_js
+                            
+                            # Escape the text properly for JavaScript
+                            escaped_text = formatted_text.replace('\\', '\\\\').replace('`', '\\`').replace('\n', '\\n').replace('\r', '\\r')
+                            
+                            st_js.st_js_eval(f"navigator.clipboard.writeText(`{escaped_text}`)")
+                            st.success("✅ Formatted text copied! Perfect for pasting into Google Docs")
+                            
+                        except Exception as e:
+                            # Fallback: show text area for manual copy
+                            st.info("📋 Copy this formatted text:")
+                            st.text_area(
+                                "Formatted text (ready for Google Docs):",
+                                value=formatted_text,
+                                height=150,
+                                key=f"manual_copy_{timestamp}",
+                                help="Select all text and copy to paste into Google Docs"
+                            )
                         
                     except Exception as e:
                         st.error("Copy failed - showing text to copy manually:")
@@ -582,6 +598,7 @@ def _create_download_buttons(formats: Dict[str, bytes], ai_report: str = None):
                 'extension': '.pdf'
             }
         }
+        
         columns = [col2, col3, col4, col5]  # Skip col1 since it's used for copy button
         for i, (fmt, config) in enumerate(format_configs.items()):
             if fmt in formats and i < len(columns):
@@ -601,6 +618,7 @@ def _create_download_buttons(formats: Dict[str, bytes], ai_report: str = None):
                     except Exception as e:
                         # If individual download button fails, show error but continue
                         st.error(f"Error creating {fmt.upper()} download: {str(e)[:50]}...")
+                        
     except Exception as e:
         # If entire download section fails, provide fallback
         st.error("Error creating download buttons. Please try refreshing the page.")
@@ -616,7 +634,167 @@ def _create_download_buttons(formats: Dict[str, bytes], ai_report: str = None):
                 )
             except:
                 st.write("Please refresh the page to access downloads.")
-# --- END OF UPDATED FUNCTION ---
+
+
+def _convert_to_google_docs_format(markdown_content: str) -> str:
+    """
+    Convert markdown report to clean, beautifully formatted text for Google Docs.
+    
+    Args:
+        markdown_content (str): Markdown content to convert
+        
+    Returns:
+        str: Clean, formatted text ready for Google Docs
+    """
+    import re
+    
+    try:
+        lines = markdown_content.split('\n')
+        formatted_lines = []
+        
+        for line in lines:
+            if not line.strip():
+                formatted_lines.append('')
+                continue
+            
+            # Main title (# Title)
+            if line.startswith('# '):
+                title = line[2:].strip()
+                formatted_lines.append(f"{title}")
+                formatted_lines.append('=' * len(title))
+            
+            # Section headers (## Section)
+            elif line.startswith('## '):
+                header = line[3:].strip()
+                formatted_lines.append('')
+                formatted_lines.append(f"{header}")
+                formatted_lines.append('-' * len(header))
+            
+            # Subsection headers (### Subsection)
+            elif line.startswith('### '):
+                subheader = line[4:].strip()
+                formatted_lines.append('')
+                formatted_lines.append(f"{subheader}")
+            
+            # Horizontal rules (---)
+            elif line.startswith('---'):
+                formatted_lines.append('')
+                formatted_lines.append('─' * 60)
+                formatted_lines.append('')
+            
+            # Bold text (**text**)
+            elif line.startswith('**') and line.endswith('**'):
+                bold_text = line[2:-2].strip()
+                formatted_lines.append('')
+                formatted_lines.append(f"{bold_text.upper()}")
+            
+            # Bullet points (- item)
+            elif line.startswith('- '):
+                bullet_text = line[2:].strip()
+                formatted_lines.append(f"• {bullet_text}")
+            
+            # Violations with severity (🔴, 🟠, 🟡, 🔵)
+            elif any(emoji in line for emoji in ['🔴', '🟠', '🟡', '🔵']):
+                formatted_line = _format_violation_for_google_docs(line)
+                formatted_lines.append(f"    {formatted_line}")
+            
+            # Regular paragraphs
+            else:
+                # Clean markdown syntax
+                clean_line = _clean_markdown_syntax(line)
+                if clean_line.strip():
+                    formatted_lines.append(clean_line)
+        
+        # Join and clean up excessive whitespace
+        result = '\n'.join(formatted_lines)
+        result = re.sub(r'\n{3,}', '\n\n', result)
+        
+        return result.strip()
+        
+    except Exception as e:
+        # Fallback: basic cleanup
+        return _basic_markdown_cleanup(markdown_content)
+
+
+def _format_violation_for_google_docs(line: str) -> str:
+    """Format violation lines for Google Docs."""
+    
+    # Replace emoji with text indicators
+    severity_replacements = {
+        '🔴': '● CRITICAL:',
+        '🟠': '● HIGH:',
+        '🟡': '● MEDIUM:',
+        '🔵': '● LOW:',
+        '✅': '✓',
+        '❌': '✗',
+        '⚠️': '⚠'
+    }
+    
+    formatted_line = line
+    for emoji, replacement in severity_replacements.items():
+        formatted_line = formatted_line.replace(emoji, replacement)
+    
+    # Clean up any remaining markdown
+    formatted_line = _clean_markdown_syntax(formatted_line)
+    
+    return formatted_line
+
+
+def _clean_markdown_syntax(text: str) -> str:
+    """Remove markdown syntax while preserving formatting intent."""
+    import re
+    
+    # Remove bold/italic markers but keep the text
+    text = re.sub(r'\*\*(.*?)\*\*', r'\1', text)  # **bold** → bold
+    text = re.sub(r'\*(.*?)\*', r'\1', text)      # *italic* → italic
+    
+    # Remove link syntax but keep the text
+    text = re.sub(r'\[([^\]]+)\]\([^\)]+\)', r'\1', text)  # [text](url) → text
+    
+    # Remove code syntax
+    text = re.sub(r'`([^`]+)`', r'\1', text)  # `code` → code
+    
+    # Clean up extra spaces
+    text = re.sub(r'\s+', ' ', text).strip()
+    
+    return text
+
+
+def _basic_markdown_cleanup(markdown_content: str) -> str:
+    """Basic fallback cleanup if main formatting fails."""
+    import re
+    
+    try:
+        content = markdown_content
+        
+        # Convert headers
+        content = re.sub(r'^# (.+)$', r'\1\n' + '=' * 50, content, flags=re.MULTILINE)
+        content = re.sub(r'^## (.+)$', r'\n\1\n' + '-' * 30, content, flags=re.MULTILINE)
+        content = re.sub(r'^### (.+)$', r'\n\1', content, flags=re.MULTILINE)
+        
+        # Convert bullets
+        content = re.sub(r'^- (.+)$', r'• \1', content, flags=re.MULTILINE)
+        
+        # Replace emojis
+        content = content.replace('🔴', '● CRITICAL:')
+        content = content.replace('🟠', '● HIGH:')
+        content = content.replace('🟡', '● MEDIUM:')
+        content = content.replace('🔵', '● LOW:')
+        content = content.replace('✅', '✓')
+        content = content.replace('❌', '✗')
+        
+        # Remove remaining markdown
+        content = re.sub(r'\*\*(.*?)\*\*', r'\1', content)
+        content = re.sub(r'\*(.*?)\*', r'\1', content)
+        content = re.sub(r'`([^`]+)`', r'\1', content)
+        
+        # Clean up spacing
+        content = re.sub(r'\n{3,}', '\n\n', content)
+        
+        return content.strip()
+        
+    except Exception as e:
+        return markdown_content
 
 def _create_individual_analyses_tab(ai_result: Dict[str, Any]):
     """Create individual analyses tab with both readable format and raw AI output."""

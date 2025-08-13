@@ -221,7 +221,7 @@ class PDFExporter:
             alignment=TA_LEFT
         ))
         
-        # Code Style
+    if 'Code' not in self.styles.byName:    # Code Style
         self.styles.add(ParagraphStyle(
             name='Code',
             parent=self.styles['Normal'],

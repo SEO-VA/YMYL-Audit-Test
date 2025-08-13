@@ -521,89 +521,89 @@ def _create_ai_report_tab(ai_result: Dict[str, Any], content_result: Optional[Di
     with st.expander("📝 View Raw Markdown"):
         st.code(ai_report, language='markdown')
 
-    def _create_download_buttons(formats: Dict[str, bytes], ai_report: str = None):
+def _create_download_buttons(formats: Dict[str, bytes], ai_report: str = None):
     """
     Create download buttons for different formats with XLSX button as first option.
     UPDATED: Replaced copy button with XLSX download button
     """
-        try:
-            timestamp = int(time.time())
-            col1, col2, col3, col4, col5 = st.columns(5)
-            
-            # --- New XLSX Download Button Implementation ---
-            with col1:
-                if ai_report:
-                    try:
-                        # Import and create XLSX file directly
-                        from exporters.xlsx_exporter import XLSXExporter
-                        
-                        xlsx_exporter = XLSXExporter()
-                        xlsx_data = xlsx_exporter.convert(ai_report, "YMYL Compliance Audit Report")
-                        
-                        # Create download button immediately
-                        filename = f"ymyl_compliance_report_{timestamp}.xlsx"
-                        st.download_button(
-                            label="📊 Excel",
-                            data=xlsx_data,
-                            file_name=filename,
-                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                            key=f"xlsx_download_{timestamp}",
-                            help="Download as Excel spreadsheet with multiple worksheets"
-                        )
-                        
-                    except ImportError:
-                        st.button(
-                            "📊 Excel",
-                            disabled=True,
-                            help="Excel export requires openpyxl library. Install it with: pip install openpyxl",
-                            key=f"xlsx_disabled_{timestamp}"
-                        )
-                    except Exception as e:
-                        st.button(
-                            "📊 Excel", 
-                            disabled=True,
-                            help=f"Excel export failed: {str(e)[:100]}",
-                            key=f"xlsx_error_{timestamp}"
-                        )
-                else:
+    try:
+        timestamp = int(time.time())
+        col1, col2, col3, col4, col5 = st.columns(5)
+        
+        # --- New XLSX Download Button Implementation ---
+        with col1:
+            if ai_report:
+                try:
+                    # Import and create XLSX file directly
+                    from exporters.xlsx_exporter import XLSXExporter
+                    
+                    xlsx_exporter = XLSXExporter()
+                    xlsx_data = xlsx_exporter.convert(ai_report, "YMYL Compliance Audit Report")
+                    
+                    # Create download button immediately
+                    filename = f"ymyl_compliance_report_{timestamp}.xlsx"
+                    st.download_button(
+                        label="📊 Excel",
+                        data=xlsx_data,
+                        file_name=filename,
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        key=f"xlsx_download_{timestamp}",
+                        help="Download as Excel spreadsheet with multiple worksheets"
+                    )
+                    
+                except ImportError:
                     st.button(
                         "📊 Excel",
                         disabled=True,
-                        help="No report available to export",
-                        key=f"xlsx_no_report_{timestamp}"
+                        help="Excel export requires openpyxl library. Install it with: pip install openpyxl",
+                        key=f"xlsx_disabled_{timestamp}"
                     )
+                except Exception as e:
+                    st.button(
+                        "📊 Excel", 
+                        disabled=True,
+                        help=f"Excel export failed: {str(e)[:100]}",
+                        key=f"xlsx_error_{timestamp}"
+                    )
+            else:
+                st.button(
+                    "📊 Excel",
+                    disabled=True,
+                    help="No report available to export",
+                    key=f"xlsx_no_report_{timestamp}"
+                )
 
-            format_configs = {
-                'markdown': {
-                    'label': "📝 Markdown",
-                    'mime': "text/markdown",
-                    'help': "Original markdown format - perfect for copying to other platforms",
-                    'extension': '.md'
-                },
-                'html': {
-                    'label': "🌐 HTML", 
-                    'mime': "text/html",
-                    'help': "Styled HTML document - opens in any web browser",
-                    'extension': '.html'
-                },
-                'docx': {
-                    'label': "📄 Word",
-                    'mime': "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                    'help': "Microsoft Word document - ready for editing and sharing",
-                    'extension': '.docx'
-                },
-                'pdf': {
-                    'label': "📋 PDF",
-                    'mime': "application/pdf", 
-                    'help': "Professional PDF document - perfect for presentations and archival",
-                    'extension': '.pdf'
-                }
+        format_configs = {
+            'markdown': {
+                'label': "📝 Markdown",
+                'mime': "text/markdown",
+                'help': "Original markdown format - perfect for copying to other platforms",
+                'extension': '.md'
+            },
+            'html': {
+                'label': "🌐 HTML", 
+                'mime': "text/html",
+                'help': "Styled HTML document - opens in any web browser",
+                'extension': '.html'
+            },
+            'docx': {
+                'label': "📄 Word",
+                'mime': "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                'help': "Microsoft Word document - ready for editing and sharing",
+                'extension': '.docx'
+            },
+            'pdf': {
+                'label': "📋 PDF",
+                'mime': "application/pdf", 
+                'help': "Professional PDF document - perfect for presentations and archival",
+                'extension': '.pdf'
             }
-            
-            columns = [col2, col3, col4, col5]  # Skip col1 since it's used for XLSX button
-            for i, (fmt, config) in enumerate(format_configs.items()):
-                if fmt in formats and i < len(columns):
-                    with columns[i]:
+        }
+        
+        columns = [col2, col3, col4, col5]  # Skip col1 since it's used for XLSX button
+        for i, (fmt, config) in enumerate(format_configs.items()):
+            if fmt in formats and i < len(columns):
+                with columns[i]:
                     try:
                         filename = f"ymyl_compliance_report_{timestamp}{config['extension']}"
                         button_key = f"download_{fmt}_{timestamp}_{hash(str(formats[fmt]))}"

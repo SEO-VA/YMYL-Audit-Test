@@ -269,22 +269,6 @@ def _create_final_report(self, analysis_results: List[Dict[str, Any]]) -> str:
     
     return report
 
-**Date:** {datetime.now().strftime("%Y-%m-%d")}
-
----
-
-"""
-        
-        for i, result in enumerate(analysis_results, 1):
-            if result.get("success"):
-                # ✅ USES IMPORTED FUNCTION FROM utils.json_utils - HAS "Translation of Fix"
-                readable_content = convert_violations_json_to_readable(result["content"])
-                report += f"{readable_content}---\n\n"
-            else:
-                report += f"## Section {i}\n\n❌ **Analysis failed:** {result.get('error', 'Unknown error')}\n\n---\n\n"
-        
-        return report
-
     async def cleanup(self):
         """Clean up resources."""
         if self.assistant_client:

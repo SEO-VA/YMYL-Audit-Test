@@ -712,39 +712,44 @@ def _clean_markdown_syntax(text: str) -> str:
 def _basic_markdown_cleanup(markdown_content: str) -> str:
     """Basic fallback cleanup if main formatting fails."""
     import re
-    
+
     try:
         content = markdown_content
-        
+
         # Convert headers
-        content = re.sub(r'^# (.+)
-        content = re.sub(r'^## (.+), r'\n\1\n' + '-' * 30, content, flags=re.MULTILINE)
-        content = re.sub(r'^### (.+)
-        
+        # Fix: Closed the unterminated string for H1
+        content = re.sub(r'^# (.+)', r'\1\n' + '=' * 50, content, flags=re.MULTILINE)
+        # Fix: Closed the unterminated string for H2 and corrected newline format
+        content = re.sub(r'^## (.+)', r'\1\n' + '-' * 30, content, flags=re.MULTILINE)
+        # Fix: Closed the unterminated string for H3
+        content = re.sub(r'^### (.+)', r'\1', content, flags=re.MULTILINE)
+
         # Convert bullets
-        content = re.sub(r'^- (.+), r'• \1', content, flags=re.MULTILINE)
-        
-        # Replace emojis
+        # Fix: Closed the unterminated string for list items
+        content = re.sub(r'^- (.+)', r'• \1', content, flags=re.MULTILINE)
+
+        # Replace emojis (No changes needed here)
         content = content.replace('🔴', 'CRITICAL:')
         content = content.replace('🟠', 'HIGH:')
         content = content.replace('🟡', 'MEDIUM:')
         content = content.replace('🔵', 'LOW:')
         content = content.replace('✅', '✓')
         content = content.replace('❌', '✗')
-        
-        # Remove remaining markdown
+
+        # Remove remaining markdown (No changes needed here)
         content = re.sub(r'\*\*(.*?)\*\*', r'\1', content)
         content = re.sub(r'\*(.*?)\*', r'\1', content)
         content = re.sub(r'`([^`]+)`', r'\1', content)
-        
-        # Clean up spacing
-        content = re.sub(r'\n{3,}', '\n\n', content)
-        
-        return content.strip()
-        
-    except Exception as e:
-        return markdown_content
 
+        # Clean up spacing (Slight adjustment for consistency)
+        content = re.sub(r'\n{3,}', '\n\n', content)
+
+        return content.strip()
+
+    except Exception as e:
+        # Consider logging the error 'e' for debugging
+        return markdown_content
+        
 def _create_individual_analyses_tab(ai_result: Dict[str, Any]):
     """Create individual analyses tab with both readable format and raw AI output."""
     from utils.json_utils import convert_violations_json_to_readable

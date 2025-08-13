@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
 Minimal Analysis Engine for YMYL Audit Tool
+Updated to support content_name from AI prompt
 """
 
 import asyncio
@@ -10,7 +11,7 @@ from datetime import datetime
 from typing import List, Dict, Any, Optional, Callable
 from ai.assistant_client import AssistantClient
 from utils.json_utils import extract_big_chunks, parse_json_output
-from utils.json_utils import convert_violations_json_to_readable  # ✅ IMPORT FROM UTILS - NO LOCAL FUNCTION
+from utils.json_utils import create_grouped_violations_report  # NEW IMPORT
 from utils.logging_utils import setup_logger
 
 logger = setup_logger(__name__)
@@ -43,8 +44,8 @@ class AnalysisEngine:
             # Process chunks
             analysis_results = await self._process_chunks_parallel(chunks)
             
-            # Create report
-            report = self._create_final_report(analysis_results)
+            # Create report using new grouped format
+            report = self._create_final_report_with_content_names(analysis_results)
             
             processing_time = time.time() - self.analysis_start_time
             
@@ -73,8 +74,11 @@ class AnalysisEngine:
         results.sort(key=lambda x: x.get("chunk_index", 0))
         return results
 
-    def _create_final_report(self, analysis_results: List[Dict[str, Any]]) -> str:
-        """Create final report from analysis results, grouped by sections and ordered by severity."""
+    def _create_final_report_with_content_names(self, analysis_results: List[Dict[str, Any]]) -> str:
+        """
+        Create final report using content_name from AI responses.
+        Much simpler than the old complex grouping logic.
+        """
         report = f"""# YMYL Compliance Audit Report
 
 **Date:** {datetime.now().strftime("%Y-%m-%d")}
@@ -83,188 +87,46 @@ class AnalysisEngine:
 
 """
         
-        # Collect all violations from all chunks
-        all_violations = []
-        chunk_summaries = []
+        # Create summary statistics
+        total_violations = 0
+        critical_count = 0
+        sections_with_violations = 0
+        successful_analyses = 0
+        failed_analyses = 0
         
-        for i, result in enumerate(analysis_results, 1):
-            if result.get("success"):
-                # Add chunk summary
-                chunk_summaries.append({
-                    'chunk_index': i,
-                    'status': 'success',
-                    'content': result["content"]
-                })
-                
-                # Extract violations for grouping
+        for result in analysis_results:
+            if result.get('success'):
+                successful_analyses += 1
                 try:
-                    violations_data = json.loads(result["content"])
-                    violations = violations_data.get('violations', [])
-                    for violation in violations:
-                        violation['source_chunk'] = i
-                        all_violations.append(violation)
+                    ai_response = json.loads(result['content'])
+                    violations = ai_response.get('violations', [])
+                    if violations:
+                        sections_with_violations += 1
+                        total_violations += len(violations)
+                        critical_count += len([v for v in violations if v.get('severity') == 'critical'])
                 except:
                     pass
             else:
-                chunk_summaries.append({
-                    'chunk_index': i,
-                    'status': 'failed',
-                    'error': result.get('error', 'Unknown error')
-                })
+                failed_analyses += 1
         
-        # Group violations by H2 sections
-        sections = {}
-        ungrouped_violations = []
+
         
-        for violation in all_violations:
-            section_found = False
-            violation_context = violation.get('context', '').lower()
-            violation_location = violation.get('location', '').lower()
-            
-            # Look for H2 headings in context or location
-            for text in [violation_context, violation_location]:
-                if 'h2:' in text:
-                    h2_start = text.find('h2:') + 3
-                    h2_end = text.find('\n', h2_start)
-                    if h2_end == -1:
-                        h2_end = len(text)
-                    h2_text = text[h2_start:h2_end].strip()
-                    
-                    if h2_text:
-                        if h2_text not in sections:
-                            sections[h2_text] = []
-                        sections[h2_text].append(violation)
-                        section_found = True
-                        break
-            
-            if not section_found:
-                ungrouped_violations.append(violation)
-        
-        # Define severity order
-        severity_order = {
-            'critical': 1,
-            'high': 2,
-            'medium': 3, 
-            'low': 4,
-            'info': 5
-        }
-        
-        def get_severity_score(violation):
-            severity = violation.get('severity', 'medium').lower()
-            return severity_order.get(severity, 3)
-        
-        # Sort violations within each section
-        for section_name in sections:
-            sections[section_name].sort(key=get_severity_score)
-        
-        ungrouped_violations.sort(key=get_severity_score)
-        
-        # Add executive summary
-        total_violations = len(all_violations)
-        critical_count = len([v for v in all_violations if v.get('severity', '').lower() == 'critical'])
-        high_count = len([v for v in all_violations if v.get('severity', '').lower() == 'high'])
-        
-        report += f"""## 📊 Executive Summary
-
-- **Total Violations Found:** {total_violations}
-- **Critical Issues:** {critical_count} 🔴
-- **High Priority Issues:** {high_count} 🟠
-- **Sections Analyzed:** {len(sections) + (1 if ungrouped_violations else 0)}
-
----
-
-"""
-        
-        # Add grouped sections
-        if sections:
-            for section_name in sorted(sections.keys()):
-                section_violations = sections[section_name]
-                report += f"""## 📋 {section_name}
-
-**Violations in this section:** {len(section_violations)}
-
-"""
-                
-                for violation in section_violations:
-                    severity = violation.get('severity', 'medium').upper()
-                    severity_icon = {
-                        'CRITICAL': '🔴',
-                        'HIGH': '🟠',
-                        'MEDIUM': '🟡',
-                        'LOW': '🔵', 
-                        'INFO': '⚪'
-                    }.get(severity, '🟡')
-                    
-                    issue = violation.get('issue', 'No issue description')
-                    location = violation.get('location', 'Unknown location')
-                    context = violation.get('context', 'No context provided')
-                    fix = violation.get('fix', 'No fix suggestion provided')
-                    source_chunk = violation.get('source_chunk', 'Unknown')
-                    
-                    report += f"""### {severity_icon} {severity}: {issue}
-
-**📍 Location:** {location}
-**📝 Context:** {context}
-**🔧 Recommended Fix:** {fix}
-**📄 Source Chunk:** {source_chunk}
-
----
-
-"""
-        
-        # Add ungrouped violations
-        if ungrouped_violations:
-            report += f"""## 📋 General Issues
-
-**Violations not tied to specific sections:** {len(ungrouped_violations)}
-
-"""
-            
-            for violation in ungrouped_violations:
-                severity = violation.get('severity', 'medium').upper()
-                severity_icon = {
-                    'CRITICAL': '🔴',
-                    'HIGH': '🟠',
-                    'MEDIUM': '🟡',
-                    'LOW': '🔵',
-                    'INFO': '⚪'
-                }.get(severity, '🟡')
-                
-                issue = violation.get('issue', 'No issue description')
-                location = violation.get('location', 'Unknown location')
-                context = violation.get('context', 'No context provided')
-                fix = violation.get('fix', 'No fix suggestion provided')
-                source_chunk = violation.get('source_chunk', 'Unknown')
-                
-                report += f"""### {severity_icon} {severity}: {issue}
-
-**📍 Location:** {location}
-**📝 Context:** {context}
-**🔧 Recommended Fix:** {fix}
-**📄 Source Chunk:** {source_chunk}
-
----
-
-"""
+        # Add grouped violations using the new function
+        grouped_violations = create_grouped_violations_report(analysis_results)
+        report += grouped_violations
         
         # Add processing summary
-        successful_chunks = len([s for s in chunk_summaries if s['status'] == 'success'])
-        failed_chunks = len([s for s in chunk_summaries if s['status'] == 'failed'])
-        
-        report += f"""## 📈 Processing Summary
+        if failed_analyses > 0:
+            report += f"""## 📈 Processing Summary
 
-- **Total Chunks Processed:** {len(chunk_summaries)}
-- **Successful Analyses:** {successful_chunks}
-- **Failed Analyses:** {failed_chunks}
-- **Success Rate:** {(successful_chunks / len(chunk_summaries) * 100):.1f}%
+**Failed Analyses:** {failed_analyses}
 
 """
-        
-        if failed_chunks > 0:
-            report += "### ❌ Failed Chunk Analysis\n\n"
-            for summary in chunk_summaries:
-                if summary['status'] == 'failed':
-                    report += f"- **Chunk {summary['chunk_index']}:** {summary['error']}\n"
+            for i, result in enumerate(analysis_results, 1):
+                if not result.get('success'):
+                    error = result.get('error', 'Unknown error')
+                    report += f"- **Chunk {i}:** {error}\n"
+            
             report += "\n"
         
         return report

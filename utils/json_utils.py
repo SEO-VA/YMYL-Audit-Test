@@ -372,144 +372,102 @@ def get_chunk_statistics(json_data: Dict[str, Any]) -> Dict[str, Any]:
         }
 
 
-def convert_violations_json_to_readable(violations_json_str: str) -> str:
+def convert_violations_json_to_readable(json_content: str) -> str:
     """
-    Convert violations JSON to readable format, grouped by H2 sections and ordered by severity.
-    Groups violations under their corresponding H2 headings and sorts by severity within each group.
+    Convert JSON violations format to human-readable markdown.
+    Now supports the new content_name field from AI prompt.
+    
+    Args:
+        json_content (str): JSON string with violations
+        
+    Returns:
+        str: Human-readable markdown format
     """
     try:
-        violations_data = json.loads(violations_json_str)
-        violations = violations_data.get('violations', [])
+        violations_data = json.loads(json_content)
+        violations = violations_data.get("violations", [])
         
         if not violations:
-            return "✅ **No YMYL compliance violations found in this section.**\n\n"
+            return "✅ **No violations found in this section.**\n\n"
         
-        # Group violations by H2 section
-        sections = {}
-        ungrouped_violations = []
-        
-        for violation in violations:
-            section_found = False
-            violation_location = violation.get('location', '').lower()
-            
-            # Look for H2 headings in the location or context
-            for v in violations:
-                context = v.get('context', '').lower()
-                location = v.get('location', '').lower()
-                
-                # Check if this violation mentions an H2 heading
-                if 'h2:' in context or 'h2:' in location:
-                    # Extract H2 heading
-                    h2_text = ""
-                    if 'h2:' in context:
-                        h2_start = context.find('h2:') + 3
-                        h2_end = context.find('\n', h2_start)
-                        if h2_end == -1:
-                            h2_end = len(context)
-                        h2_text = context[h2_start:h2_end].strip()
-                    elif 'h2:' in location:
-                        h2_start = location.find('h2:') + 3
-                        h2_end = location.find('\n', h2_start)
-                        if h2_end == -1:
-                            h2_end = len(location)
-                        h2_text = location[h2_start:h2_end].strip()
-                    
-                    if h2_text and h2_text not in sections:
-                        sections[h2_text] = []
-                    
-                    # Check if current violation belongs to this section
-                    if (h2_text.lower() in violation_location or 
-                        h2_text.lower() in violation.get('context', '').lower()):
-                        sections[h2_text].append(violation)
-                        section_found = True
-                        break
-            
-            if not section_found:
-                ungrouped_violations.append(violation)
-        
-        # Define severity order (highest to lowest)
-        severity_order = {
-            'critical': 1,
-            'high': 2, 
-            'medium': 3,
-            'low': 4,
-            'info': 5
-        }
-        
-        def get_severity_score(violation):
-            severity = violation.get('severity', 'medium').lower()
-            return severity_order.get(severity, 3)
-        
-        # Sort violations within each section by severity
-        for section_name in sections:
-            sections[section_name].sort(key=get_severity_score)
-        
-        # Sort ungrouped violations by severity
-        ungrouped_violations.sort(key=get_severity_score)
-        
-        # Build the readable output
         readable_parts = []
         
-        # Add grouped sections (sorted by section name)
-        for section_name in sorted(sections.keys()):
-            section_violations = sections[section_name]
-            if section_violations:
-                readable_parts.append(f"## 📋 {section_name}\n")
-                
-                for violation in section_violations:
-                    severity = violation.get('severity', 'medium').upper()
-                    severity_icon = {
-                        'CRITICAL': '🔴',
-                        'HIGH': '🟠', 
-                        'MEDIUM': '🟡',
-                        'LOW': '🔵',
-                        'INFO': '⚪'
-                    }.get(severity, '🟡')
-                    
-                    issue = violation.get('issue', 'No issue description')
-                    location = violation.get('location', 'Unknown location')
-                    context = violation.get('context', 'No context provided')
-                    fix = violation.get('fix', 'No fix suggestion provided')
-                    
-                    readable_parts.append(f"### {severity_icon} {severity}: {issue}\n")
-                    readable_parts.append(f"**📍 Location:** {location}\n")
-                    readable_parts.append(f"**📝 Context:** {context}\n")
-                    readable_parts.append(f"**🔧 Recommended Fix:** {fix}\n")
-                    readable_parts.append("---\n")
-                
-                readable_parts.append("\n")
-        
-        # Add ungrouped violations if any
-        if ungrouped_violations:
-            readable_parts.append("## 📋 General Issues\n")
+        for i, violation in enumerate(violations, 1):
+            severity_emoji = {
+                "critical": "🔴",
+                "medium": "🟡", 
+                "low": "🔵"
+            }.get(violation.get("severity", "medium"), "🟡")
             
-            for violation in ungrouped_violations:
-                severity = violation.get('severity', 'medium').upper()
-                severity_icon = {
-                    'CRITICAL': '🔴',
-                    'HIGH': '🟠',
-                    'MEDIUM': '🟡', 
-                    'LOW': '🔵',
-                    'INFO': '⚪'
-                }.get(severity, '🟡')
-                
-                issue = violation.get('issue', 'No issue description')
-                location = violation.get('location', 'Unknown location')
-                context = violation.get('context', 'No context provided')
-                fix = violation.get('fix', 'No fix suggestion provided')
-                
-                readable_parts.append(f"### {severity_icon} {severity}: {issue}\n")
-                readable_parts.append(f"**📍 Location:** {location}\n")
-                readable_parts.append(f"**📝 Context:** {context}\n")
-                readable_parts.append(f"**🔧 Recommended Fix:** {fix}\n")
-                readable_parts.append("---\n")
+            violation_text = f"""**{severity_emoji} Violation {i}**
+- **Issue:** {violation.get('violation_type', 'Unknown violation')}
+- **Problematic Text:** "{violation.get('problematic_text', 'N/A')}"
+- **Translation:** "{violation.get('translation', 'N/A')}"
+- **Guideline Reference:** Section {violation.get('guideline_section', 'N/A')} (Page {violation.get('page_number', 'N/A')})
+- **Severity:** {violation.get('severity', 'medium').title()}
+- **Suggested Fix:** "{violation.get('suggested_rewrite', 'No suggestion provided')}"
+- **Translation of Fix:** "{violation.get('rewrite_translation', 'N/A')}"
+
+"""
+            readable_parts.append(violation_text)
         
-        return '\n'.join(readable_parts)
+        return ''.join(readable_parts)
         
-    except json.JSONDecodeError as e:
-        return f"❌ **Error parsing violations JSON:** {str(e)}\n\nRaw content:\n```\n{violations_json_str}\n```\n"
+    except json.JSONDecodeError:
+        # Fallback: return original content if not JSON
+        logger.warning("Content is not valid JSON, returning as-is")
+        return json_content
     except Exception as e:
-        return f"❌ **Error processing violations:** {str(e)}\n\nRaw content:\n```\n{violations_json_str}\n```\n"
+        logger.error(f"Error converting JSON to readable format: {e}")
+        return f"Error processing violations: {str(e)}\n\n"
+
+
+def create_grouped_violations_report(analysis_results: list) -> str:
+    """
+    Create a violations report grouped by content sections using content_name.
+    
+    Args:
+        analysis_results (list): List of chunk analysis results from AI
+        
+    Returns:
+        str: Complete grouped violations report
+    """
+    try:
+        readable_parts = []
+        
+        for result in analysis_results:
+            if not result.get('success'):
+                continue
+                
+            chunk_idx = result.get('chunk_index', 'Unknown')
+            
+            # Extract content_name and violations from AI response
+            try:
+                ai_response = json.loads(result['content'])
+                content_name = ai_response.get('content_name', f'Content Section {chunk_idx}')
+                violations = ai_response.get('violations', [])
+                
+                # Only add section if it has violations
+                if violations:
+                    readable_parts.append(f"## {content_name}\n\n")
+                    
+                    # Convert violations for this section
+                    violations_content = convert_violations_json_to_readable(result['content'])
+                    readable_parts.append(violations_content)
+                    
+            except json.JSONDecodeError:
+                # Fallback if AI response isn't valid JSON
+                logger.warning(f"Invalid JSON response for chunk {chunk_idx}")
+                continue
+        
+        if not readable_parts:
+            return "✅ **No violations found across all content sections.**\n\n"
+        
+        return ''.join(readable_parts)
+        
+    except Exception as e:
+        logger.error(f"Error creating grouped report: {e}")
+        return f"Error creating grouped report: {str(e)}\n\n"
 
 
 def compare_json_content(json1: str, json2: str) -> Dict[str, Any]:
@@ -722,11 +680,12 @@ def get_content_summary(json_data: Dict[str, Any]) -> Dict[str, Any]:
 # FIXED: Enhanced exports for better module interface
 __all__ = [
     'convert_violations_json_to_readable',
+    'create_grouped_violations_report',  # NEW
     'decode_unicode_escapes',
     'extract_big_chunks',
     'parse_json_output',
     'format_json_for_display',
-    'get_display_json_string',  # NEW: Main function for UI display
+    'get_display_json_string',
     'validate_chunk_structure',
     'get_chunk_statistics',
     'compare_json_content',

@@ -23,6 +23,7 @@ class AnalysisEngine:
         self.assistant_client = AssistantClient(api_key)
         self.progress_callback = progress_callback
         self.analysis_start_time = None
+        self.chunks_data = None  # NEW: Store original chunks
 
     async def process_json_content(self, json_output: str) -> Dict[str, Any]:
         """Process JSON through AI analysis."""
@@ -35,16 +36,18 @@ class AnalysisEngine:
             if not json_data:
                 return {"success": False, "error": "Invalid JSON"}
             
-            # Extract chunks
+            # Extract chunks and store for later use
             chunks = extract_big_chunks(json_data)
             if not chunks:
                 return {"success": False, "error": "No chunks found"}
             
+            self.chunks_data = chunks  # NEW: Store for report generation
+            
             # Process chunks
             analysis_results = await self._process_chunks_parallel(chunks)
             
-            # Create report
-            report = self._create_final_report(analysis_results)
+            # Create report with grouping
+            report = self._create_final_report_grouped(analysis_results)  # CHANGED
             
             processing_time = time.time() - self.analysis_start_time
             
@@ -58,23 +61,11 @@ class AnalysisEngine:
         except Exception as e:
             return {"success": False, "error": str(e)}
 
-    async def _process_chunks_parallel(self, chunks: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        """Process chunks in parallel."""
-        semaphore = asyncio.Semaphore(10)  # Max 10 parallel
+    def _create_final_report_grouped(self, analysis_results: List[Dict[str, Any]]) -> str:
+        """Create final report with grouped violations by content sections."""
+        from datetime import datetime
+        from utils.json_utils import create_grouped_violations_report  # NEW IMPORT
         
-        async def process_chunk(chunk):
-            async with semaphore:
-                return await self.assistant_client.analyze_chunk(chunk["text"], chunk["index"])
-        
-        tasks = [process_chunk(chunk) for chunk in chunks]
-        results = await asyncio.gather(*tasks)
-        
-        # Sort by chunk index
-        results.sort(key=lambda x: x.get("chunk_index", 0))
-        return results
-
-    def _create_final_report(self, analysis_results: List[Dict[str, Any]]) -> str:
-        """Create final report from analysis results."""
         report = f"""# YMYL Compliance Audit Report
 
 **Date:** {datetime.now().strftime("%Y-%m-%d")}
@@ -83,13 +74,9 @@ class AnalysisEngine:
 
 """
         
-        for i, result in enumerate(analysis_results, 1):
-            if result.get("success"):
-                # ✅ USES IMPORTED FUNCTION FROM utils.json_utils - HAS "Translation of Fix"
-                readable_content = convert_violations_json_to_readable(result["content"])
-                report += f"{readable_content}---\n\n"
-            else:
-                report += f"## Section {i}\n\n❌ **Analysis failed:** {result.get('error', 'Unknown error')}\n\n---\n\n"
+        # Create grouped violations report
+        grouped_violations = create_grouped_violations_report(analysis_results, self.chunks_data)
+        report += grouped_violations
         
         return report
 

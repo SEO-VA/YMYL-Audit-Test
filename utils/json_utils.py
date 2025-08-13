@@ -374,8 +374,8 @@ def get_chunk_statistics(json_data: Dict[str, Any]) -> Dict[str, Any]:
 
 def convert_violations_json_to_readable(json_content: str) -> str:
     """
-    ✅ MAIN FUNCTION: Convert JSON violations format to human-readable markdown.
-    THIS IS THE COMPLETE VERSION WITH "Translation of Fix" FIELD
+    Convert JSON violations format to human-readable markdown.
+    Keeps all current violation details, no grouping (original function).
     
     Args:
         json_content (str): JSON string with violations
@@ -414,229 +414,168 @@ def convert_violations_json_to_readable(json_content: str) -> str:
         return ''.join(readable_parts)
         
     except json.JSONDecodeError:
-        # Fallback: return original content if not JSON
-        logger.warning("Content is not valid JSON, returning as-is")
         return json_content
     except Exception as e:
-        logger.error(f"Error converting JSON to readable format: {e}")
         return f"Error processing violations: {str(e)}\n\n"
 
 
-def compare_json_content(json1: str, json2: str) -> Dict[str, Any]:
+def create_grouped_violations_report(analysis_results: list, chunks_data: list = None) -> str:
     """
-    Compare two JSON content strings for differences.
-    
-    FIXED: New function to help detect content changes
+    Create a violations report grouped by content sections with meaningful headers.
     
     Args:
-        json1 (str): First JSON string
-        json2 (str): Second JSON string
+        analysis_results (list): List of chunk analysis results from AI
+        chunks_data (list): Original chunk data with content text
         
     Returns:
-        dict: Comparison results
+        str: Complete grouped violations report
     """
     try:
-        hash1 = _generate_content_hash(json1)
-        hash2 = _generate_content_hash(json2)
+        readable_parts = []
         
-        data1 = parse_json_output(json1)
-        data2 = parse_json_output(json2)
+        for result in analysis_results:
+            if not result.get('success'):
+                continue
+                
+            chunk_idx = result.get('chunk_index', 'Unknown')
+            
+            # Get section name from chunk content
+            section_name = extract_section_name_from_chunk(chunk_idx, chunks_data)
+            
+            # Convert violations for this chunk
+            violations_content = convert_violations_json_to_readable(result['content'])
+            
+            # Only add section if it has violations
+            if "No violations found" not in violations_content:
+                readable_parts.append(f"## {section_name}\n\n")
+                readable_parts.append(violations_content)
         
-        if not data1 or not data2:
-            return {
-                'identical': False,
-                'error': 'Failed to parse one or both JSON strings',
-                'hash1': hash1,
-                'hash2': hash2
-            }
+        if not readable_parts:
+            return "✅ **No violations found across all content sections.**\n\n"
         
-        stats1 = get_chunk_statistics(data1)
-        stats2 = get_chunk_statistics(data2)
-        
-        return {
-            'identical': hash1 == hash2,
-            'hash1': hash1,
-            'hash2': hash2,
-            'chunks1': stats1.get('total_big_chunks', 0),
-            'chunks2': stats2.get('total_big_chunks', 0),
-            'length1': len(json1),
-            'length2': len(json2),
-            'content_diversity1': stats1.get('content_diversity', 0),
-            'content_diversity2': stats2.get('content_diversity', 0),
-            'compared_at': datetime.now().isoformat()
-        }
+        return ''.join(readable_parts)
         
     except Exception as e:
-        logger.error(f"Error comparing JSON content: {e}")
-        return {
-            'identical': False,
-            'error': str(e),
-            'compared_at': datetime.now().isoformat()
-        }
+        return f"Error creating grouped report: {str(e)}\n\n"
 
 
-def validate_content_freshness(content_data: Dict[str, Any], ai_result: Dict[str, Any]) -> Dict[str, bool]:
+def extract_section_name_from_chunk(chunk_index: int, chunks_data: list = None) -> str:
     """
-    Validate that AI results correspond to the given content data.
-    
-    FIXED: New function for comprehensive freshness validation
+    Extract a meaningful section name from chunk content.
     
     Args:
-        content_data (dict): Content processing result
-        ai_result (dict): AI analysis result
+        chunk_index (int): Index of the chunk
+        chunks_data (list): Original chunk data with text content
         
     Returns:
-        dict: Validation results with specific checks
+        str: Meaningful section name based on content
     """
     try:
-        validation = {
-            'is_fresh': True,
-            'timestamp_match': True,
-            'url_match': True,
-            'content_match': True,
-            'errors': []
-        }
+        if not chunks_data:
+            return f"Content Section {chunk_index}"
         
-        # Check processing timestamps
-        content_timestamp = content_data.get('processing_timestamp')
-        ai_timestamp = ai_result.get('processing_timestamp')
+        # Find the matching chunk
+        chunk_content = None
+        for chunk in chunks_data:
+            if chunk.get('index') == chunk_index:
+                chunk_content = chunk.get('text', '')
+                break
         
-        if content_timestamp is not None and ai_timestamp is not None:
-            validation['timestamp_match'] = (content_timestamp == ai_timestamp)
-        else:
-            validation['timestamp_match'] = False
-            validation['errors'].append('Missing timestamp data')
+        if not chunk_content:
+            return f"Content Section {chunk_index}"
         
-        # Check source URLs
-        content_url = content_data.get('url')
-        ai_url = ai_result.get('source_url')
+        # Extract meaningful name from content
+        lines = chunk_content.split('\n')
         
-        if content_url and ai_url:
-            validation['url_match'] = (content_url == ai_url)
-        else:
-            validation['url_match'] = False
-            validation['errors'].append('Missing URL data')
+        # Look for H1, H2, or first meaningful content line
+        for line in lines:
+            line = line.strip()
+            if not line:
+                continue
+                
+            # Check for headings
+            if line.startswith('H1:'):
+                title = line[3:].strip()
+                return clean_section_title(title)
+            elif line.startswith('H2:'):
+                title = line[3:].strip()
+                return clean_section_title(title)
+            elif line.startswith('SUBTITLE:'):
+                title = line[9:].strip()
+                return clean_section_title(title)
+            elif line.startswith('CONTENT:') and len(line) > 20:
+                # Use first part of content as title
+                content = line[8:].strip()
+                title = content.split('.')[0]  # First sentence
+                return clean_section_title(title)
         
-        # Check content hashes if available
-        content_json = content_data.get('json_output')
-        ai_content_hash = ai_result.get('content_hash')
+        # Fallback: use first non-empty line
+        for line in lines:
+            if line.strip() and len(line.strip()) > 10:
+                # Remove content type prefixes
+                clean_line = line.strip()
+                for prefix in ['H1:', 'H2:', 'H3:', 'CONTENT:', 'LEAD:', 'SUBTITLE:']:
+                    if clean_line.startswith(prefix):
+                        clean_line = clean_line[len(prefix):].strip()
+                        break
+                
+                if clean_line:
+                    title = clean_line.split('.')[0]  # First sentence
+                    return clean_section_title(title)
         
-        if content_json and ai_content_hash:
-            if isinstance(content_json, dict):
-                # Convert back to string for hashing
-                json_string = json.dumps(content_json, sort_keys=True)
-                current_hash = _generate_content_hash(json_string)
-            else:
-                current_hash = _generate_content_hash(str(content_json))
-            validation['content_match'] = (current_hash == ai_content_hash)
-        else:
-            validation['content_match'] = True  # Assume match if no hash data
-        
-        # Overall freshness determination
-        validation['is_fresh'] = (
-            validation['timestamp_match'] and 
-            validation['url_match'] and 
-            validation['content_match']
-        )
-        
-        logger.info(f"Content freshness validation: {'Fresh' if validation['is_fresh'] else 'Stale'}")
-        return validation
+        return f"Content Section {chunk_index}"
         
     except Exception as e:
-        logger.error(f"Error validating content freshness: {e}")
-        return {
-            'is_fresh': False,
-            'timestamp_match': False,
-            'url_match': False,
-            'content_match': False,
-            'errors': [str(e)]
-        }
+        return f"Content Section {chunk_index}"
 
 
-def _generate_content_hash(content: str) -> str:
+def clean_section_title(title: str, max_length: int = 60) -> str:
     """
-    Generate a hash for content to enable quick comparison.
+    Clean and format section title for header use.
     
     Args:
-        content (str): Content to hash
+        title (str): Raw title text
+        max_length (int): Maximum length for title
         
     Returns:
-        str: SHA-256 hash of the content
-    """
-    return hashlib.sha256(content.encode('utf-8')).hexdigest()[:16]  # Short hash for display
-
-
-def _create_display_version(json_data: Dict[str, Any]) -> Dict[str, Any]:
-    """
-    Create a version of JSON data suitable for display (removing internal metadata).
-    
-    Args:
-        json_data (dict): Original JSON data
-        
-    Returns:
-        dict: Display version without internal fields
-    """
-    if not isinstance(json_data, dict):
-        return json_data
-    
-    display_data = {}
-    for key, value in json_data.items():
-        # Skip internal metadata fields
-        if key.startswith('_'):
-            continue
-        display_data[key] = value
-    
-    return display_data
-
-
-def get_content_summary(json_data: Dict[str, Any]) -> Dict[str, Any]:
-    """
-    Get a quick summary of JSON content for UI display.
-    
-    FIXED: New function for quick content overview
-    
-    Args:
-        json_data (dict): Parsed JSON data
-        
-    Returns:
-        dict: Content summary
+        str: Cleaned title
     """
     try:
-        stats = get_chunk_statistics(json_data)
-        metadata = json_data.get('_metadata', {})
+        # Remove quotes and extra whitespace
+        title = title.strip(' "\'')
         
-        return {
-            'total_chunks': stats.get('total_big_chunks', 0),
-            'valid_chunks': stats.get('valid_chunks', 0),
-            'total_length': stats.get('total_text_length', 0),
-            'quality_score': stats.get('quality_score', 0),
-            'content_hash': metadata.get('content_hash', 'unknown'),
-            'parsed_at': metadata.get('parsed_at', 'unknown'),
-            'avg_chunk_size': stats.get('avg_chunk_size', 0)
-        }
+        # Truncate if too long
+        if len(title) > max_length:
+            title = title[:max_length].strip()
+            # Try to end at word boundary
+            last_space = title.rfind(' ')
+            if last_space > max_length * 0.7:
+                title = title[:last_space]
+            title += "..."
         
-    except Exception as e:
-        logger.error(f"Error getting content summary: {e}")
-        return {
-            'total_chunks': 0,
-            'valid_chunks': 0,
-            'total_length': 0,
-            'quality_score': 0,
-            'content_hash': 'error',
-            'parsed_at': 'error',
-            'avg_chunk_size': 0,
-            'error': str(e)
-        }
+        # Capitalize appropriately
+        if title.isupper():
+            title = title.title()
+        elif title.islower():
+            title = title.capitalize()
+        
+        return title if title else "Content Section"
+        
+    except Exception:
+        return "Content Section"
 
 
-# FIXED: Enhanced exports for better module interface
+# Add to __all__ list at the bottom of utils/json_utils.py:
 __all__ = [
     'convert_violations_json_to_readable',
+    'create_grouped_violations_report',  # NEW
+    'extract_section_name_from_chunk',    # NEW
+    'clean_section_title',                # NEW
     'decode_unicode_escapes',
     'extract_big_chunks',
     'parse_json_output',
     'format_json_for_display',
-    'get_display_json_string',  # NEW: Main function for UI display
+    'get_display_json_string',
     'validate_chunk_structure',
     'get_chunk_statistics',
     'compare_json_content',

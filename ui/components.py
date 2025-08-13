@@ -534,6 +534,7 @@ def _create_download_buttons(formats: Dict[str, bytes], ai_report: str = None):
         timestamp = int(time.time())
         col1, col2, col3, col4, col5 = st.columns(5)
         
+        with col1:
             # Copy button with JavaScript clipboard
             if st.button("📋 Copy", key=f"copy_btn_{timestamp}"):
                 if ai_report:

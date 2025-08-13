@@ -222,7 +222,7 @@ class PDFExporter:
         ))
         
         # Code Style - Only add if not already defined
-        if 'Code' not in self.styles.byName:
+    if 'Code' not in self.styles.byName:
         self.styles.add(ParagraphStyle(
             name='Code',
             parent=self.styles['Normal'],

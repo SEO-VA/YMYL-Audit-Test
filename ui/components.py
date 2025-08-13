@@ -6,6 +6,8 @@ FIXED: Proper Unicode handling in JSON display - no more encoding issues!
 NEW FEATURE: Dual input mode - URL extraction OR direct JSON input
 UPDATED: Restructured AI Compliance Report tab with copy functionality
 """
+
+import streamlit_js_eval as st_js
 import streamlit as st
 import time
 import re
@@ -216,7 +218,6 @@ def _create_url_input_mode() -> Tuple[str, str, bool]:
     # Show current analysis context if available AND not currently processing
     current_url = st.session_state.get('current_url_analysis')
     is_processing = st.session_state.get('is_processing', False)
-
     if current_url and not is_processing:  # ← Added processing check
         st.info(f"📋 **Currently analyzing**: {current_url}")
         # Check if we have AI results for this URL
@@ -464,7 +465,6 @@ def create_results_tabs(result: Dict[str, Any], ai_result: Optional[Dict[str, An
             _create_content_tab(result)
         with tab5:
             _create_summary_tab(result, ai_result)
-
     else:
         # Without AI analysis results - ALSO HAS DEBUG TAB
         tab1, tab2, tab3, = st.tabs([
@@ -485,9 +485,7 @@ def _create_ai_report_tab(ai_result: Dict[str, Any], content_result: Optional[Di
     UPDATED: Restructured layout with copy functionality and downloads at top
     """
     st.markdown("### YMYL Compliance Analysis Report")
-    
     ai_report = ai_result['report']
-    
     # Export section (moved to top)
     st.markdown("#### 📄 Download Formats")
     try:
@@ -516,67 +514,43 @@ def _create_ai_report_tab(ai_result: Dict[str, Any], content_result: Optional[Di
             file_name=f"ymyl_compliance_report_{timestamp}.md",
             mime="text/markdown"
         )
-    
     # Formatted report in expandable box
     with st.expander("📖 View Formatted Report"):
         st.markdown(ai_report)
-    
     # Raw markdown at bottom in expandable box
     with st.expander("📝 View Raw Markdown"):
         st.code(ai_report, language='markdown')
 
+# --- UPDATED FUNCTION ---
 def _create_download_buttons(formats: Dict[str, bytes], ai_report: str = None):
     """
     Create download buttons for different formats with copy button as first option.
-    UPDATED: Added copy to clipboard button as first button
+    UPDATED: Added copy to clipboard button as first button using streamlit_js_eval
     """
     try:
         timestamp = int(time.time())
         col1, col2, col3, col4, col5 = st.columns(5)
         
+        # --- Updated Copy Button Implementation ---
         with col1:
-            # Copy button with JavaScript clipboard
+            # Copy button using streamlit_js_eval
             if st.button("📋 Copy", key=f"copy_btn_{timestamp}"):
                 if ai_report:
-                    # Use JavaScript to actually copy to clipboard
-                    import base64
-                    encoded_report = base64.b64encode(ai_report.encode('utf-8')).decode('ascii')
-                    
-                    st.components.v1.html(f"""
-                        <script>
-                        const encodedText = '{encoded_report}';
-                        const text = atob(encodedText);
-                        
-                        if (navigator.clipboard && window.isSecureContext) {{
-                            navigator.clipboard.writeText(text).then(function() {{
-                                document.getElementById('copy-status').innerHTML = '✅ Copied to clipboard!';
-                                document.getElementById('copy-status').style.color = 'green';
-                            }}).catch(function(err) {{
-                                document.getElementById('copy-status').innerHTML = '❌ Copy failed: ' + err.message;
-                                document.getElementById('copy-status').style.color = 'red';
-                            }});
-                        }} else {{
-                            // Fallback for older browsers
-                            const textArea = document.createElement('textarea');
-                            textArea.value = text;
-                            document.body.appendChild(textArea);
-                            textArea.select();
-                            try {{
-                                document.execCommand('copy');
-                                document.getElementById('copy-status').innerHTML = '✅ Copied to clipboard!';
-                                document.getElementById('copy-status').style.color = 'green';
-                            }} catch (err) {{
-                                document.getElementById('copy-status').innerHTML = '❌ Copy failed';
-                                document.getElementById('copy-status').style.color = 'red';
-                            }}
-                            document.body.removeChild(textArea);
-                        }}
-                        </script>
-                        <div id="copy-status" style="font-size: 12px; text-align: center; margin-top: 5px;">Copying...</div>
-                    """, height=60)
+                    try:
+                        # Use streamlit_js_eval to copy text to clipboard
+                        st_js.copy_to_clipboard(ai_report) 
+                        # Provide immediate feedback
+                        st.success("✅ Report copied to clipboard!") 
+                    except Exception as e:
+                        st.error(f"❌ Failed to copy report: {e}")
+                        # Optionally, provide a manual fallback
+                        with st.expander("📎 Manual Copy"):
+                            st.markdown("**Copy the report text below:**")
+                            st.text_area("Report Content", value=ai_report, height=200, key=f"manual_copy_area_{timestamp}")
                 else:
-                    st.error("No report to copy")
-        
+                    st.warning("No report content available to copy.")
+        # --- End of Updated Copy Button Implementation ---
+
         format_configs = {
             'markdown': {
                 'label': "📝 Markdown",
@@ -637,6 +611,7 @@ def _create_download_buttons(formats: Dict[str, bytes], ai_report: str = None):
                 )
             except:
                 st.write("Please refresh the page to access downloads.")
+# --- END OF UPDATED FUNCTION ---
 
 def _create_individual_analyses_tab(ai_result: Dict[str, Any]):
     """Create individual analyses tab with both readable format and raw AI output."""
@@ -923,7 +898,6 @@ def display_success_message(message: str):
 def create_info_panel(title: str, content: str, icon: str = "ℹ️"):
     """Create an information panel."""
     st.info(f"{icon} **{title}**: {content}")
-
 
 def get_input_mode_display_name(mode: str) -> str:
     """Convert internal input mode to display name."""

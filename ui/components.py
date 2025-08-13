@@ -196,11 +196,13 @@ def create_dual_input_section() -> Tuple[str, str, bool]:
         return _create_direct_json_input_mode()
     else:  # Raw Content
         return _create_raw_content_input_mode()
+
 def _create_url_input_mode() -> Tuple[str, str, bool]:
     """Create URL input interface."""
     # Show current analysis context if available AND not currently processing
     current_url = st.session_state.get('current_url_analysis')
     is_processing = st.session_state.get('is_processing', False)
+    
     if current_url and not is_processing:
         st.info(f"📋 **Currently analyzing**: {current_url}")
         # Check if we have AI results for this URL
@@ -208,7 +210,9 @@ def _create_url_input_mode() -> Tuple[str, str, bool]:
         if ai_result and ai_result.get('success'):
             analysis_time = ai_result.get('processing_time', 0)
             st.success(f"✅ **AI Analysis Complete** for this URL (took {analysis_time:.1f}s)")
+
     col1, col2 = st.columns([2, 1])
+    
     with col1:
         url = st.text_input(
             "Enter the URL to process:", 
@@ -216,6 +220,7 @@ def _create_url_input_mode() -> Tuple[str, str, bool]:
             placeholder="https://example.com/page-to-analyze",
             key="url_input"
         )
+    
     with col2:
         st.markdown("<br>", unsafe_allow_html=True)  # Spacing to align with input
         # Show warning if URL is different from current analysis
@@ -223,6 +228,7 @@ def _create_url_input_mode() -> Tuple[str, str, bool]:
         if current_url and url and url != current_url:
             button_help = "⚠️ Processing new URL will clear current AI analysis results"
             st.caption("🔄 New URL detected")
+        
         process_clicked = st.button(
             "🚀 Process URL", 
             type="primary", 
@@ -230,10 +236,14 @@ def _create_url_input_mode() -> Tuple[str, str, bool]:
             help=button_help,
             key="process_url_button"
         )
-    return 'url', url, process_clicked
+    
+    # FIXED: Return the display mode name that app.py expects
+    return "🌐 URL Input", url, process_clicked
+
 def _create_direct_json_input_mode() -> Tuple[str, str, bool]:
     """Create direct JSON input interface."""
     st.markdown("**Paste your pre-chunked JSON content:**")
+    
     # Show current analysis context for direct JSON
     current_input_mode = st.session_state.get('current_input_analysis_mode')
     if current_input_mode == 'direct_json':
@@ -243,6 +253,7 @@ def _create_direct_json_input_mode() -> Tuple[str, str, bool]:
         if ai_result and ai_result.get('success'):
             analysis_time = ai_result.get('processing_time', 0)
             st.success(f"✅ **AI Analysis Complete** for direct JSON (took {analysis_time:.1f}s)")
+
     # Large text area for JSON input
     json_content = st.text_area(
         "JSON Content",
@@ -269,6 +280,7 @@ def _create_direct_json_input_mode() -> Tuple[str, str, bool]:
         help="Paste your chunked JSON content here. The tool expects the standard chunk format.",
         key="direct_json_input"
     )
+
     # Process button
     col1, col2 = st.columns([2, 1])
     with col1:
@@ -282,10 +294,14 @@ def _create_direct_json_input_mode() -> Tuple[str, str, bool]:
             key="process_json_button",
             disabled=not json_content.strip()
         )
-    return 'direct_json', json_content, process_clicked
+    
+    # FIXED: Return the display mode name that app.py expects
+    return "📄 Direct JSON", json_content, process_clicked
+
 def _create_raw_content_input_mode() -> Tuple[str, str, bool]:
     """Create raw content input interface - NEW FEATURE."""
     st.markdown("**Paste your raw content to be chunked:**")
+    
     # Show current analysis context for raw content
     current_input_mode = st.session_state.get('current_input_analysis_mode')
     if current_input_mode == 'raw_content':
@@ -295,26 +311,31 @@ def _create_raw_content_input_mode() -> Tuple[str, str, bool]:
         if ai_result and ai_result.get('success'):
             analysis_time = ai_result.get('processing_time', 0)
             st.success(f"✅ **AI Analysis Complete** for raw content (took {analysis_time:.1f}s)")
+
     # Large text area for raw content input
     raw_content = st.text_area(
         "Raw Content",
         height=300,
         placeholder='''Paste your raw content here. This can be:
+
 • Article text from any website
 • Blog post content
 • Product descriptions
 • Marketing copy
 • Documentation
 • Any text content you want to analyze for YMYL compliance
+
 The tool will automatically chunk this content using the Dejan chunking service, then analyze it with AI.''',
         help="Paste any raw text content here. It will be automatically chunked and then analyzed.",
         key="raw_content_input"
     )
+
     # Show content statistics
     if raw_content.strip():
         char_count = len(raw_content)
         word_count = len(raw_content.split())
         line_count = len(raw_content.split('\n'))
+        
         col1, col2, col3 = st.columns(3)
         with col1:
             st.metric("Characters", f"{char_count:,}")
@@ -322,6 +343,7 @@ The tool will automatically chunk this content using the Dejan chunking service,
             st.metric("Words", f"{word_count:,}")
         with col3:
             st.metric("Lines", f"{line_count:,}")
+
     # Process button
     col1, col2 = st.columns([2, 1])
     with col1:
@@ -338,7 +360,10 @@ The tool will automatically chunk this content using the Dejan chunking service,
             key="process_raw_button",
             disabled=not raw_content.strip()
         )
-    return 'raw_content', raw_content, process_clicked
+    
+    # FIXED: Return the display mode name that app.py expects
+    return "📝 Raw Content", raw_content, process_clicked
+
 def create_debug_logger(placeholder) -> Callable[[str], None]:
     """Create debug logger function for detailed logging."""
     log_lines = []

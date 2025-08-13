@@ -521,57 +521,40 @@ def _create_ai_report_tab(ai_result: Dict[str, Any], content_result: Optional[Di
     with st.expander("📝 View Raw Markdown"):
         st.code(ai_report, language='markdown')
 
+# --- UPDATED FUNCTION ---
 def _create_download_buttons(formats: Dict[str, bytes], ai_report: str = None):
     """
-    Create download buttons for different formats with XLSX button as first option.
-    UPDATED: Replaced copy button with XLSX download button
+    Create download buttons for different formats with copy button as first option.
+    UPDATED: Added copy to clipboard button as first button using streamlit_js_eval
     """
     try:
         timestamp = int(time.time())
         col1, col2, col3, col4, col5 = st.columns(5)
         
-        # --- New XLSX Download Button Implementation ---
+        # --- Updated Copy Button Implementation ---
         with col1:
-            if ai_report:
-                try:
-                    # Import and create XLSX file directly
-                    from exporters.xlsx_exporter import XLSXExporter
-                    
-                    xlsx_exporter = XLSXExporter()
-                    xlsx_data = xlsx_exporter.convert(ai_report, "YMYL Compliance Audit Report")
-                    
-                    # Create download button immediately
-                    filename = f"ymyl_compliance_report_{timestamp}.xlsx"
-                    st.download_button(
-                        label="📊 Excel",
-                        data=xlsx_data,
-                        file_name=filename,
-                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                        key=f"xlsx_download_{timestamp}",
-                        help="Download as Excel spreadsheet with multiple worksheets"
-                    )
-                    
-                except ImportError:
-                    st.button(
-                        "📊 Excel",
-                        disabled=True,
-                        help="Excel export requires openpyxl library. Install it with: pip install openpyxl",
-                        key=f"xlsx_disabled_{timestamp}"
-                    )
-                except Exception as e:
-                    st.button(
-                        "📊 Excel", 
-                        disabled=True,
-                        help=f"Excel export failed: {str(e)[:100]}",
-                        key=f"xlsx_error_{timestamp}"
-                    )
-            else:
-                st.button(
-                    "📊 Excel",
-                    disabled=True,
-                    help="No report available to export",
-                    key=f"xlsx_no_report_{timestamp}"
-                )
+            # Copy button with streamlit_js_eval (simple version)
+            if st.button("📋 Copy", key=f"copy_btn_{timestamp}"):
+                if ai_report:
+                    try:
+                        import streamlit_js_eval as st_js
+                        
+                        # Escape the text properly for JavaScript
+                        escaped_text = ai_report.replace('\\', '\\\\').replace('`', '\\`').replace('\n', '\\n').replace('\r', '\\r')
+                        
+                        st_js.st_js_eval(f"navigator.clipboard.writeText(`{escaped_text}`)")
+                        st.success("✅ Copied to clipboard!")
+                        
+                    except Exception as e:
+                        st.error("Copy failed - showing text to copy manually:")
+                        st.text_area(
+                            "Copy this text:",
+                            value=ai_report,
+                            height=150,
+                            key=f"manual_copy_{timestamp}"
+                        )
+                else:
+                    st.error("No report to copy")
 
         format_configs = {
             'markdown': {
@@ -599,13 +582,13 @@ def _create_download_buttons(formats: Dict[str, bytes], ai_report: str = None):
                 'extension': '.pdf'
             }
         }
-        
-        columns = [col2, col3, col4, col5]  # Skip col1 since it's used for XLSX button
+        columns = [col2, col3, col4, col5]  # Skip col1 since it's used for copy button
         for i, (fmt, config) in enumerate(format_configs.items()):
             if fmt in formats and i < len(columns):
                 with columns[i]:
                     try:
                         filename = f"ymyl_compliance_report_{timestamp}{config['extension']}"
+                        # FIXED: Use unique key for each download button to prevent conflicts
                         button_key = f"download_{fmt}_{timestamp}_{hash(str(formats[fmt]))}"
                         st.download_button(
                             label=config['label'],
@@ -613,13 +596,15 @@ def _create_download_buttons(formats: Dict[str, bytes], ai_report: str = None):
                             file_name=filename,
                             mime=config['mime'],
                             help=config['help'],
-                            key=button_key
+                            key=button_key  # Unique key to prevent media file conflicts
                         )
                     except Exception as e:
+                        # If individual download button fails, show error but continue
                         st.error(f"Error creating {fmt.upper()} download: {str(e)[:50]}...")
-                        
     except Exception as e:
+        # If entire download section fails, provide fallback
         st.error("Error creating download buttons. Please try refreshing the page.")
+        # Provide simple fallback download for markdown
         if 'markdown' in formats:
             try:
                 st.download_button(
@@ -631,6 +616,7 @@ def _create_download_buttons(formats: Dict[str, bytes], ai_report: str = None):
                 )
             except:
                 st.write("Please refresh the page to access downloads.")
+# --- END OF UPDATED FUNCTION ---
 
 def _create_individual_analyses_tab(ai_result: Dict[str, Any]):
     """Create individual analyses tab with both readable format and raw AI output."""

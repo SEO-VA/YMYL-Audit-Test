@@ -4,6 +4,7 @@ UI Components for YMYL Audit Tool
 Reusable Streamlit UI components for the application interface.
 FIXED: Proper Unicode handling in JSON display - no more encoding issues!
 NEW FEATURE: Dual input mode - URL extraction OR direct JSON input
+UPDATED: Restructured AI Compliance Report tab with copy functionality
 """
 import streamlit as st
 import time
@@ -478,41 +479,17 @@ def create_results_tabs(result: Dict[str, Any], ai_result: Optional[Dict[str, An
         with tab3:
             _create_summary_tab(result)
 
-
-
 def _create_ai_report_tab(ai_result: Dict[str, Any], content_result: Optional[Dict[str, Any]] = None):
     """
     Create AI compliance report tab content.
-    ENHANCED: Shows appropriate source information for both input modes
+    UPDATED: Restructured layout with copy functionality and downloads at top
     """
     st.markdown("### YMYL Compliance Analysis Report")
-    # Show analysis metadata and freshness info
-    if content_result:
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            processing_time = ai_result.get('processing_time', 0)
-            st.metric("Processing Time", f"{processing_time:.2f}s")
-        with col2:
-            source_url = ai_result.get('source_url', content_result.get('url', 'Direct JSON Input'))
-            if len(source_url) > 30:
-                display_source = source_url[:30] + "..."
-            else:
-                display_source = source_url
-            st.metric("Source", display_source)
-        with col3:
-            timestamp_match = (
-                content_result.get('processing_timestamp', 0) == 
-                ai_result.get('processing_timestamp', -1)
-            )
-            freshness = "Fresh ✅" if timestamp_match else "Stale ⚠️"
-            st.metric("Result Status", freshness)
+    
     ai_report = ai_result['report']
-    # Copy section
-    st.markdown("#### 📋 Copy Report")
-    st.code(ai_report, language='markdown')
-    # Export section
+    
+    # Export section (moved to top)
     st.markdown("#### 📄 Download Formats")
-    st.markdown("Choose your preferred format for professional use:")
     try:
         # Create export manager and generate all formats
         with ExportManager() as export_mgr:
@@ -539,17 +516,33 @@ def _create_ai_report_tab(ai_result: Dict[str, Any], content_result: Optional[Di
             file_name=f"ymyl_compliance_report_{timestamp}.md",
             mime="text/markdown"
         )
-    # Format guide
-    st.info("""
-    💡 **Format Guide:**
-    - **Markdown**: Best for developers and copy-pasting to other platforms
-    - **HTML**: Opens in web browsers, styled and formatted
-    - **Word**: Professional business format, editable and shareable
-    - **PDF**: Final presentation format, preserves formatting across devices
-    """)
-    # Formatted report viewer
-    with st.expander("📖 View Formatted Report"):
-        st.markdown(ai_report)
+    
+    # Copy section with formatted report (not in expandable box)
+    st.markdown("#### 📋 Copy Report")
+    
+    # Add copy to clipboard button
+    col1, col2 = st.columns([1, 4])
+    with col1:
+        if st.button("📋 Copy to Clipboard", help="Copy plain text for pasting into Google Docs, Word, etc."):
+            # Use JavaScript to copy to clipboard
+            st.components.v1.html(f"""
+                <script>
+                navigator.clipboard.writeText(`{ai_report.replace('`', '\\`')}`).then(function() {{
+                    console.log('Report copied to clipboard!');
+                }});
+                </script>
+                <div style="color: green; font-size: 14px;">✅ Copied to clipboard!</div>
+            """, height=50)
+    
+    with col2:
+        st.caption("💡 Use the copy button for clean pasting into Google Docs, Word, or other editors")
+    
+    # Display formatted report
+    st.markdown(ai_report)
+    
+    # Raw markdown at bottom in expandable box
+    with st.expander("📝 View Raw Markdown"):
+        st.code(ai_report, language='markdown')
 
 def _create_download_buttons(formats: Dict[str, bytes]):
     """
@@ -781,7 +774,7 @@ def _create_summary_tab(result: Dict[str, Any], ai_result: Optional[Dict[str, An
     # Add the new user-friendly recap at the top
     create_user_friendly_log_recap()
     st.markdown("---")
-    st.subheader("Technical Details")    
+    st.markdown("### Technical Details")    
     st.subheader("Processing Summary")
     input_mode = st.session_state.get('input_mode', '🌐 URL Input')
     # Parse JSON for chunk statistics

@@ -16,6 +16,13 @@ from utils.logging_utils import setup_logger
 
 logger = setup_logger(__name__)
 
+def _generate_content_hash(content: str) -> str:
+    """Generate a hash for content to enable quick comparison."""
+    try:
+        return hashlib.sha256(str(content).encode('utf-8')).hexdigest()[:16]
+    except Exception:
+        return "unknown_hash"
+
 
 def decode_unicode_escapes(text: str) -> str:
     """

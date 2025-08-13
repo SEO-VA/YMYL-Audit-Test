@@ -222,19 +222,19 @@ class PDFExporter:
         ))
         
         # Code Style - Only add if not already defined
-    if 'Code' not in self.styles.byName:
-        self.styles.add(ParagraphStyle(
-            name='Code',
-            parent=self.styles['Normal'],
-            fontName='Courier',
-            fontSize=9,
-            textColor=colors.HexColor('#2c3e50'),
-            backColor=colors.HexColor('#f8f9fa'),
-            leftIndent=20,
-            rightIndent=20,
-            spaceBefore=6,
-            spaceAfter=6
-        ))
+        if 'Code' not in self.styles.byName:
+            self.styles.add(ParagraphStyle(
+                name='Code',
+                parent=self.styles['Normal'],
+                fontName='Courier',
+                fontSize=9,
+                textColor=colors.HexColor('#2c3e50'),
+                backColor=colors.HexColor('#f8f9fa'),
+                leftIndent=20,
+                rightIndent=20,
+                spaceBefore=6,
+                spaceAfter=6
+            ))
 
     def _build_story(self, markdown_content: str, title: str) -> List:
         """

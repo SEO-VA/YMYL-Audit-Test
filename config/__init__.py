@@ -3,6 +3,7 @@
 Config Package for YMYL Audit Tool
 
 Configuration management and settings for the application.
+UPDATED: Single request architecture
 """
 
 # Import main settings for easier access
@@ -15,7 +16,8 @@ try:
         CHROME_OPTIONS,
         REQUEST_TIMEOUT,
         USER_AGENT,
-        MAX_PARALLEL_REQUESTS,
+        MAX_CONTENT_SIZE_FOR_AI,  # UPDATED
+        SINGLE_REQUEST_TIMEOUT,   # UPDATED
         MAX_CONTENT_LENGTH,
         CHUNK_POLLING_INTERVAL,
         CHUNK_POLLING_TIMEOUT,
@@ -53,8 +55,9 @@ except ImportError as e:
     CHROME_OPTIONS = ['--headless=new', '--no-sandbox', '--disable-dev-shm-usage', '--disable-gpu']
     REQUEST_TIMEOUT = 30
     USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-    DEFAULT_EXPORT_FORMATS = ['html', 'docx', 'pdf', 'markdown']
-    MAX_PARALLEL_REQUESTS = 10
+    MAX_CONTENT_SIZE_FOR_AI = 2000000  # ADDED
+    SINGLE_REQUEST_TIMEOUT = 300       # ADDED
+    DEFAULT_EXPORT_FORMATS = ['docx']
     MAX_CONTENT_LENGTH = 1000000
     CHUNK_POLLING_INTERVAL = 0.2
     CHUNK_POLLING_TIMEOUT = 30
@@ -92,8 +95,8 @@ __version__ = "1.0.0"
 __all__ = [
     # Core settings
     'ANALYZER_ASSISTANT_ID', 'SELENIUM_TIMEOUT', 'CHUNK_API_URL', 'CHROME_OPTIONS',
-    'REQUEST_TIMEOUT', 'USER_AGENT', 'DEFAULT_EXPORT_FORMATS', 'MAX_PARALLEL_REQUESTS',
-    'MAX_CONTENT_LENGTH', 'CHUNK_POLLING_INTERVAL', 'CHUNK_POLLING_TIMEOUT',
+    'REQUEST_TIMEOUT', 'USER_AGENT', 'DEFAULT_EXPORT_FORMATS', 'MAX_CONTENT_SIZE_FOR_AI',
+    'SINGLE_REQUEST_TIMEOUT', 'MAX_CONTENT_LENGTH', 'CHUNK_POLLING_INTERVAL', 'CHUNK_POLLING_TIMEOUT',
     'DEFAULT_TIMEZONE', 'DEBUG_MODE_DEFAULT', 'LOG_FORMAT', 'LOG_LEVEL',
     
     # Configuration groups

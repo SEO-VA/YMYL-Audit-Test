@@ -20,6 +20,21 @@ logger = setup_logger(__name__)
 
 
 class WordExporter:
+    a
+    def _add_formatted_text_to_paragraph(self, paragraph, text):
+        """Add text with embedded bold formatting to a paragraph."""
+        import re
+        # Split text by bold markers
+        parts = re.split(r'(\*\*.*?\*\*)', text)
+        
+        for part in parts:
+            if part.startswith('**') and part.endswith('**') and len(part) > 4:
+                # Bold text
+                run = paragraph.add_run(part[2:-2])
+                run.bold = True
+            elif part:
+                # Regular text
+                paragraph.add_run(part)
     """
     Converts markdown reports to professionally formatted Word documents.
     

@@ -1,21 +1,22 @@
 #!/usr/bin/env python3
 """
 Configuration settings for YMYL Audit Tool
-
-Centralized configuration management for all application settings.
-
-UPDATED: Simplified export configuration - Word format only
+UPDATED: Single request architecture settings
 """
 
 # AI Processing Configuration
 ANALYZER_ASSISTANT_ID = "asst_WzODK9EapCaZoYkshT6x9xEH"
 
-# Selenium/Browser Configuration
+# Single Request Configuration
+SINGLE_REQUEST_TIMEOUT = 300  # 5 minutes for full content analysis
+MAX_CONTENT_SIZE_FOR_AI = 2000000  # 2MB limit for single request
+
+# Selenium/Browser Configuration (unchanged)
 SELENIUM_TIMEOUT = 180
 SELENIUM_SHORT_TIMEOUT = 30
 CHUNK_API_URL = "https://chunk.dejan.ai/"
 
-# Browser Options
+# Browser Options (unchanged)
 CHROME_OPTIONS = [
     '--headless=new',
     '--no-sandbox',
@@ -23,31 +24,29 @@ CHROME_OPTIONS = [
     '--disable-gpu'
 ]
 
-# HTTP Configuration
+# HTTP Configuration (unchanged)
 REQUEST_TIMEOUT = 30
 USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
 
-# Export Configuration - SIMPLIFIED
-DEFAULT_EXPORT_FORMAT = 'docx'  # Word format only
-SUPPORTED_EXPORT_FORMATS = ['docx']  # Only Word format supported
-MAX_PARALLEL_REQUESTS = 10
+# Export Configuration (unchanged)
+DEFAULT_EXPORT_FORMAT = 'docx'
+SUPPORTED_EXPORT_FORMATS = ['docx']
 
-# Content Processing Configuration
+# Content Processing Configuration (unchanged)
 MAX_CONTENT_LENGTH = 1000000  # 1MB limit for content processing
-CHUNK_POLLING_INTERVAL = 0.2  # seconds
-CHUNK_POLLING_TIMEOUT = 30    # Increased from 10 to 30 seconds for more reliable processing
+CHUNK_POLLING_INTERVAL = 0.2
+CHUNK_POLLING_TIMEOUT = 30
 
-# UI Configuration
+# UI Configuration (unchanged)
 DEFAULT_TIMEZONE = "Europe/Malta"
 DEBUG_MODE_DEFAULT = True
 
-# Logging Configuration
+# Logging Configuration (unchanged)
 LOG_FORMAT = '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 LOG_LEVEL = 'INFO'
 
-# Session management settings
+# Session management settings (simplified)
 SESSION_MANAGEMENT = {
-    # Session state keys that should be cleared when starting new URL analysis
     'ANALYSIS_KEYS': [
         "latest_result",
         "ai_analysis_result", 
@@ -55,105 +54,52 @@ SESSION_MANAGEMENT = {
         "ai_stats",
         "analysis_statistics",
         "current_url_analysis",
-        "processing_start_time",
-        "chunk_analysis_results"
+        "processing_start_time"
     ],
-    
-    # Maximum number of results to keep in session history
     'MAX_HISTORY_ITEMS': 5,
-    
-    # Automatic cleanup threshold (seconds) - auto-clear results older than this
-    'AUTO_CLEANUP_THRESHOLD': 3600,  # 1 hour
-    
-    # Enable/disable automatic stale detection
+    'AUTO_CLEANUP_THRESHOLD': 3600,
     'ENABLE_STALE_DETECTION': True,
-    
-    # Show debug info for session management
     'DEBUG_SESSION_STATE': False
 }
 
-# Content validation settings
+# Content validation settings (unchanged)
 CONTENT_VALIDATION = {
-    # Minimum content length for valid chunks
     'MIN_CHUNK_LENGTH': 10,
-    
-    # Maximum content length before warning
-    'MAX_SAFE_CONTENT_LENGTH': 500000,  # 500KB
-    
-    # Minimum number of chunks required for AI analysis
+    'MAX_SAFE_CONTENT_LENGTH': 500000,
     'MIN_CHUNKS_FOR_ANALYSIS': 1,
-    
-    # Content quality threshold (0.0 to 1.0)
     'MIN_QUALITY_SCORE': 0.5,
-    
-    # Enable content hash validation
     'ENABLE_CONTENT_HASHING': True
 }
 
-# AI Analysis Configuration
+# AI Analysis Configuration (updated for single request)
 AI_ANALYSIS = {
-    # Timeout for individual chunk analysis (seconds)
-    'CHUNK_ANALYSIS_TIMEOUT': 300,
-    
-    # Maximum retries for failed chunks
-    'MAX_CHUNK_RETRIES': 3,
-    
-    # Backoff multiplier for retries
+    'SINGLE_REQUEST_TIMEOUT': SINGLE_REQUEST_TIMEOUT,
+    'MAX_RETRIES': 3,
     'RETRY_BACKOFF_MULTIPLIER': 2,
-    
-    # Enable progress tracking enhancements
     'ENABLE_PROGRESS_TRACKING': True,
-    
-    # Progress update interval (for UI responsiveness)
-    'PROGRESS_UPDATE_INTERVAL': 0.1,
-    
-    # Parallel processing limits
-    'MAX_CONCURRENT_ANALYSES': 10,
-    'MIN_CONCURRENT_ANALYSES': 1
+    'PROGRESS_UPDATE_INTERVAL': 0.5,
+    'MAX_CONTENT_SIZE': MAX_CONTENT_SIZE_FOR_AI
 }
 
-# UI Enhancement Settings
+# UI Enhancement Settings (simplified)
 UI_SETTINGS = {
-    # Show detailed analysis context
     'SHOW_ANALYSIS_CONTEXT': True,
-    
-    # Enable freshness indicators
     'SHOW_FRESHNESS_INDICATORS': True,
-    
-    # Auto-scroll to results after processing
     'AUTO_SCROLL_TO_RESULTS': True,
-    
-    # Show processing statistics
     'SHOW_PROCESSING_STATS': True,
-    
-    # Maximum number of log lines to display
     'MAX_LOG_LINES': 50,
-    
-    # Maximum number of milestones in simple progress
-    'MAX_PROGRESS_MILESTONES': 10,
-    
-    # Enable advanced debug options
     'ENABLE_DEBUG_OPTIONS': True,
-
-    # User-friendly logging settings
     'SIMPLE_PROGRESS_MODE': True,
     'SHOW_TECHNICAL_LOGS': False,
     'MAX_USER_FRIENDLY_MESSAGES': 5,
     'CONSOLIDATE_STATUS_MESSAGES': True
 }
 
-# Error Handling Configuration
+# Error Handling Configuration (unchanged)
 ERROR_HANDLING = {
-    # Show detailed error messages to users
     'SHOW_DETAILED_ERRORS': False,
-    
-    # Enable error reporting/logging
     'ENABLE_ERROR_REPORTING': True,
-    
-    # Maximum error message length for UI
     'MAX_ERROR_MESSAGE_LENGTH': 200,
-    
-    # Retry configuration for various operations
     'RETRY_CONFIG': {
         'content_extraction': {'max_retries': 3, 'backoff': 1.5},
         'chunk_processing': {'max_retries': 2, 'backoff': 2.0},
@@ -161,92 +107,52 @@ ERROR_HANDLING = {
     }
 }
 
-# Performance Monitoring
+# Performance Monitoring (updated)
 PERFORMANCE = {
-    # Enable performance monitoring
     'ENABLE_MONITORING': True,
-    
-    # Log performance metrics
     'LOG_PERFORMANCE_METRICS': True,
-    
-    # Performance thresholds for warnings
     'THRESHOLDS': {
-        'content_extraction': 30,     # seconds
-        'chunk_processing': 120,      # seconds  
-        'ai_analysis_per_chunk': 60   # seconds
+        'content_extraction': 30,
+        'chunk_processing': 120,
+        'single_ai_analysis': 300  # Updated for single request
     },
-    
-    # Memory usage monitoring
     'MONITOR_MEMORY_USAGE': True,
-    
-    # Clear large objects after processing
     'AUTO_CLEANUP_LARGE_OBJECTS': True
 }
 
-# Feature Flags
+# Feature Flags (updated)
 FEATURE_FLAGS = {
-    # Enable experimental features
     'EXPERIMENTAL_FEATURES': False,
-    
-    # Enable enhanced progress tracking
     'ENHANCED_PROGRESS_TRACKING': True,
-    
-    # Enable content validation
     'CONTENT_VALIDATION': True,
-    
-    # Enable stale results detection
     'STALE_RESULTS_DETECTION': True,
-    
-    # Enable session state debugging
     'SESSION_STATE_DEBUG': False,
-    
-    # Enable advanced analytics
-    'ADVANCED_ANALYTICS': True
+    'ADVANCED_ANALYTICS': True,
+    'SINGLE_REQUEST_MODE': True  # NEW: Flag for single request architecture
 }
 
-# Security Configuration
+# Security Configuration (unchanged)
 SECURITY = {
-    # Sanitize user inputs
     'SANITIZE_INPUTS': True,
-    
-    # Maximum URL length
     'MAX_URL_LENGTH': 2048,
-    
-    # Allowed URL schemes
     'ALLOWED_URL_SCHEMES': ['http', 'https'],
-    
-    # Enable content type validation
     'VALIDATE_CONTENT_TYPES': True,
-    
-    # Maximum file sizes for various operations
     'MAX_FILE_SIZES': {
         'content': MAX_CONTENT_LENGTH,
-        'json_output': 5 * 1024 * 1024,  # 5MB
-        'exported_reports': 10 * 1024 * 1024  # 10MB
+        'json_output': 5 * 1024 * 1024,
+        'exported_reports': 10 * 1024 * 1024,
+        'ai_single_request': MAX_CONTENT_SIZE_FOR_AI  # NEW
     }
 }
 
-# Export and Download Configuration - SIMPLIFIED
+# Export and Download Configuration (unchanged)
 EXPORT_CONFIG = {
-    # Default filename pattern
     'FILENAME_PATTERN': 'ymyl_compliance_report_{timestamp}',
-    
-    # Default format (Word only)
     'DEFAULT_FORMAT': 'docx',
-    
-    # Supported formats (Word only)
     'SUPPORTED_FORMATS': ['docx'],
-    
-    # Include metadata in exports
     'INCLUDE_METADATA': True,
-    
-    # Google Docs compatibility mode
     'GOOGLE_DOCS_COMPATIBLE': True,
-    
-    # Maximum export file size before warning
-    'MAX_EXPORT_SIZE': 50 * 1024 * 1024,  # 50MB
-    
-    # Word-specific settings
+    'MAX_EXPORT_SIZE': 50 * 1024 * 1024,
     'WORD_SETTINGS': {
         'USE_BUILTIN_STYLES': True,
         'EMOJI_TO_TEXT': True,
@@ -254,52 +160,10 @@ EXPORT_CONFIG = {
     }
 }
 
-# Development and Testing
-DEVELOPMENT = {
-    # Enable development mode features
-    'DEV_MODE': False,
-    
-    # Show internal timestamps and IDs
-    'SHOW_INTERNAL_DATA': False,
-    
-    # Enable test data generation
-    'ENABLE_TEST_DATA': False,
-    
-    # Mock external services (for testing)
-    'MOCK_EXTERNAL_SERVICES': False,
-    
-    # Additional logging for development
-    'VERBOSE_LOGGING': False
-}
-
-# Backward Compatibility
-COMPATIBILITY = {
-    # Support legacy session state keys
-    'SUPPORT_LEGACY_KEYS': True,
-    
-    # Migrate old session data format
-    'AUTO_MIGRATE_SESSION_DATA': True,
-    
-    # Legacy timeout values
-    'LEGACY_TIMEOUTS': {
-        'chunk_polling': 10  # Original timeout for reference
-    }
-}
-
 
 def get_setting(key_path: str, default=None):
-    """
-    Get a setting value using dot notation.
-    
-    Args:
-        key_path (str): Dot-separated path to setting (e.g., 'SESSION_MANAGEMENT.ENABLE_STALE_DETECTION')
-        default: Default value if setting not found
-        
-    Returns:
-        Setting value or default
-    """
+    """Get setting value using dot notation."""
     try:
-        # Import current module to access settings
         import sys
         current_module = sys.modules[__name__]
         
@@ -321,40 +185,30 @@ def get_setting(key_path: str, default=None):
 
 
 def validate_settings():
-    """
-    Validate configuration settings for consistency.
-    
-    Returns:
-        tuple: (is_valid, errors_list)
-    """
+    """Validate configuration settings."""
     errors = []
     
     try:
         # Validate timeout settings
-        if CHUNK_POLLING_TIMEOUT <= CHUNK_POLLING_INTERVAL:
-            errors.append("CHUNK_POLLING_TIMEOUT must be greater than CHUNK_POLLING_INTERVAL")
+        if SINGLE_REQUEST_TIMEOUT <= 0:
+            errors.append("SINGLE_REQUEST_TIMEOUT must be positive")
         
         # Validate content limits
-        if MAX_CONTENT_LENGTH <= 0:
-            errors.append("MAX_CONTENT_LENGTH must be positive")
+        if MAX_CONTENT_SIZE_FOR_AI <= 0:
+            errors.append("MAX_CONTENT_SIZE_FOR_AI must be positive")
         
-        # Validate AI settings
-        if MAX_PARALLEL_REQUESTS <= 0:
-            errors.append("MAX_PARALLEL_REQUESTS must be positive")
+        if MAX_CONTENT_SIZE_FOR_AI > 10 * 1024 * 1024:  # 10MB warning
+            errors.append("MAX_CONTENT_SIZE_FOR_AI is very large, may cause performance issues")
         
-        # Validate session management settings
+        # Validate session management
         max_history = SESSION_MANAGEMENT.get('MAX_HISTORY_ITEMS', 0)
         if max_history <= 0:
             errors.append("SESSION_MANAGEMENT.MAX_HISTORY_ITEMS must be positive")
         
-        # Validate content validation settings
-        min_quality = CONTENT_VALIDATION.get('MIN_QUALITY_SCORE', 0)
-        if not (0 <= min_quality <= 1):
-            errors.append("CONTENT_VALIDATION.MIN_QUALITY_SCORE must be between 0 and 1")
-        
-        # Validate export settings
-        if DEFAULT_EXPORT_FORMAT not in SUPPORTED_EXPORT_FORMATS:
-            errors.append("DEFAULT_EXPORT_FORMAT must be in SUPPORTED_EXPORT_FORMATS")
+        # Validate AI analysis settings
+        max_retries = AI_ANALYSIS.get('MAX_RETRIES', 0)
+        if max_retries <= 0:
+            errors.append("AI_ANALYSIS.MAX_RETRIES must be positive")
         
         return len(errors) == 0, errors
         
@@ -363,51 +217,42 @@ def validate_settings():
 
 
 def get_timeout_config():
-    """
-    Get all timeout-related configuration in one place.
-    
-    Returns:
-        dict: All timeout settings
-    """
+    """Get all timeout-related configuration."""
     return {
         'request_timeout': REQUEST_TIMEOUT,
         'selenium_timeout': SELENIUM_TIMEOUT,
         'selenium_short_timeout': SELENIUM_SHORT_TIMEOUT,
         'chunk_polling_timeout': CHUNK_POLLING_TIMEOUT,
         'chunk_polling_interval': CHUNK_POLLING_INTERVAL,
-        'ai_analysis_timeout': AI_ANALYSIS.get('CHUNK_ANALYSIS_TIMEOUT', 300),
+        'single_request_timeout': SINGLE_REQUEST_TIMEOUT,  # NEW
         'auto_cleanup_threshold': SESSION_MANAGEMENT.get('AUTO_CLEANUP_THRESHOLD', 3600)
     }
 
 
-def get_export_config():
-    """
-    Get export-related configuration.
-    
-    Returns:
-        dict: Export configuration
-    """
+def get_ai_config():
+    """Get AI-related configuration."""
     return {
-        'supported_formats': SUPPORTED_EXPORT_FORMATS,
-        'filename_pattern': EXPORT_CONFIG.get('FILENAME_PATTERN', 'ymyl_compliance_report_{timestamp}'),
-        'google_docs_compatible': EXPORT_CONFIG.get('GOOGLE_DOCS_COMPATIBLE', True),
-        'word_settings': EXPORT_CONFIG.get('WORD_SETTINGS', {})
+        'assistant_id': ANALYZER_ASSISTANT_ID,
+        'single_request_timeout': SINGLE_REQUEST_TIMEOUT,
+        'max_content_size': MAX_CONTENT_SIZE_FOR_AI,
+        'max_retries': AI_ANALYSIS.get('MAX_RETRIES', 3),
+        'retry_backoff': AI_ANALYSIS.get('RETRY_BACKOFF_MULTIPLIER', 2)
     }
 
 
-# Export important configuration groups for easy access
+# REMOVED SETTINGS (no longer needed):
+# - MAX_PARALLEL_REQUESTS (no parallel processing)
+# - Semaphore/concurrency settings
+# - Per-chunk processing configurations
+
+
 __all__ = [
-    # Original exports
-    'ANALYZER_ASSISTANT_ID', 'SELENIUM_TIMEOUT', 'CHUNK_API_URL', 'CHROME_OPTIONS',
+    'ANALYZER_ASSISTANT_ID', 'SINGLE_REQUEST_TIMEOUT', 'MAX_CONTENT_SIZE_FOR_AI',
+    'SELENIUM_TIMEOUT', 'CHUNK_API_URL', 'CHROME_OPTIONS',
     'REQUEST_TIMEOUT', 'USER_AGENT', 'DEFAULT_EXPORT_FORMAT', 'SUPPORTED_EXPORT_FORMATS',
-    'MAX_PARALLEL_REQUESTS', 'MAX_CONTENT_LENGTH', 'CHUNK_POLLING_INTERVAL', 
-    'CHUNK_POLLING_TIMEOUT', 'DEFAULT_TIMEZONE', 'DEBUG_MODE_DEFAULT', 'LOG_FORMAT', 'LOG_LEVEL',
-    
-    # Configuration groups
+    'MAX_CONTENT_LENGTH', 'CHUNK_POLLING_INTERVAL', 'CHUNK_POLLING_TIMEOUT',
+    'DEFAULT_TIMEZONE', 'DEBUG_MODE_DEFAULT', 'LOG_FORMAT', 'LOG_LEVEL',
     'SESSION_MANAGEMENT', 'CONTENT_VALIDATION', 'AI_ANALYSIS', 'UI_SETTINGS',
     'ERROR_HANDLING', 'PERFORMANCE', 'FEATURE_FLAGS', 'SECURITY', 'EXPORT_CONFIG',
-    'DEVELOPMENT', 'COMPATIBILITY',
-    
-    # Utility functions
-    'get_setting', 'validate_settings', 'get_timeout_config', 'get_export_config'
+    'get_setting', 'validate_settings', 'get_timeout_config', 'get_ai_config'
 ]

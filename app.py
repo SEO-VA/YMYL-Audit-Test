@@ -2,13 +2,14 @@
 """
 YMYL Audit Tool - Main Application with Authentication
 
+UPDATED: Single request AI analysis architecture
 Enhanced with triple input mode: URL extraction, Direct JSON input, AND Raw Content chunking.
-The raw content workflow sends user content to Dejan chunking service, then processes with AI.
 """
 import re
 import asyncio
 import streamlit as st
 import time
+import json
 from collections import defaultdict
 from extractors.content_extractor import ContentExtractor
 from processors.chunk_processor import ChunkProcessor
@@ -18,7 +19,7 @@ from ui.components import (
     create_page_header,
     create_sidebar_config,
     create_how_it_works_section,
-    create_dual_input_section,  # Now supports 3 modes
+    create_dual_input_section,
     create_debug_logger,
     create_simple_progress_tracker,
     create_simple_status_updater,
@@ -139,7 +140,7 @@ def check_authentication():
     return False
 
 # =============================================================================
-# ENHANCED DATA HANDLING AND WORKFLOWS
+# DATA HANDLING AND WORKFLOWS
 # =============================================================================
 
 def clear_analysis_session_state():
@@ -152,8 +153,7 @@ def clear_analysis_session_state():
         "analysis_statistics",
         "current_url_analysis",
         "current_input_analysis_mode",
-        "processing_start_time",
-        "chunk_analysis_results"
+        "processing_start_time"
     ]
     
     cleared_count = 0
@@ -415,14 +415,11 @@ def process_direct_json_workflow(json_content: str, debug_mode: bool = False) ->
         return result
 
 def process_raw_content_workflow(raw_content: str, debug_mode: bool = False) -> dict:
-    """
-    NEW: Process raw content through chunking service, then prepare for AI analysis.
-    Uses existing ChunkProcessor to send content to Dejan site.
-    """
+    """Process raw content through chunking service, then prepare for AI analysis."""
     result = {
         'success': False,
         'url': 'Raw Content Input',
-        'extracted_content': raw_content,  # Store the original raw content
+        'extracted_content': raw_content,
         'json_output_raw': None,
         'json_output': None,
         'error': None,
@@ -482,7 +479,7 @@ def process_raw_content_workflow(raw_content: str, debug_mode: bool = False) -> 
                 simple_status("Please provide content to analyze", "error")
             return result
         
-        # Check content length (use same limits as ChunkProcessor)
+        # Check content length
         from config.settings import MAX_CONTENT_LENGTH
         if len(raw_content) > MAX_CONTENT_LENGTH:
             error_msg = f"Content too large: {len(raw_content):,} characters (max: {MAX_CONTENT_LENGTH:,})"
@@ -540,10 +537,10 @@ def process_raw_content_workflow(raw_content: str, debug_mode: bool = False) -> 
 def validate_analysis_freshness(result: dict, ai_result: dict = None) -> bool:
     """
     Validate that AI results correspond to current content processing.
-    Enhanced to work with URL, direct JSON, and raw content input modes.
+    UPDATED: Simplified for single request architecture
     """
     if not ai_result or not result:
-        return True  # No AI result to validate, this is normal
+        return True
     
     # Check processing timestamps
     content_timestamp = result.get('processing_timestamp')
@@ -569,12 +566,12 @@ def validate_analysis_freshness(result: dict, ai_result: dict = None) -> bool:
 async def process_ai_analysis(json_output: str, api_key: str, source_result: dict = None) -> dict:
     """
     Process AI compliance analysis.
-    Enhanced to work with all three input modes: URL, direct JSON, and raw content.
+    UPDATED: Single request architecture
     """
     try:
-        logger.info("Starting AI analysis workflow")
+        logger.info("Starting single-request AI analysis workflow")
         
-        # Handle both string and dict inputs properly
+        # Handle both string and dict inputs
         if isinstance(json_output, str):
             json_data = parse_json_output(json_output)
         elif isinstance(json_output, dict):
@@ -585,79 +582,81 @@ async def process_ai_analysis(json_output: str, api_key: str, source_result: dic
         if not json_data:
             return {'success': False, 'error': 'Failed to parse JSON content'}
         
-        # Create progress tracking UI elements
+        # Validate content size
+        json_string = json.dumps(json_data) if isinstance(json_data, dict) else json_output
+        content_size = len(json_string)
+        
+        from config.settings import MAX_CONTENT_SIZE_FOR_AI
+        if content_size > MAX_CONTENT_SIZE_FOR_AI:
+            return {
+                'success': False, 
+                'error': f'Content too large for single request: {content_size:,} chars (max: {MAX_CONTENT_SIZE_FOR_AI:,})'
+            }
+        
+        # Create progress tracking UI
         progress_container = st.container()
         
         with progress_container:
             input_mode = source_result.get('input_mode', 'url') if source_result else 'unknown'
-            source_display = source_result.get('url', 'Unknown Source') if source_result else 'Unknown'
             
-            # Enhanced status messages for all three input modes
             if input_mode == 'url':
-                st.info(f"🚀 Starting AI analysis of content extracted from URL")
+                st.info("🚀 Starting single-request AI analysis of extracted content")
             elif input_mode == 'direct_json':
-                st.info(f"🚀 Starting AI analysis of direct JSON input")
+                st.info("🚀 Starting single-request AI analysis of direct JSON input")
             elif input_mode == 'raw_content':
-                st.info(f"🚀 Starting AI analysis of chunked raw content")
+                st.info("🚀 Starting single-request AI analysis of chunked content")
             else:
-                st.info(f"🚀 Starting AI analysis of processed content")
+                st.info("🚀 Starting single-request AI analysis")
             
-            # Progress bar for overall progress
+            # Progress bar
             progress_bar = st.progress(0.0)
             progress_text = st.empty()
             
-            # Status metrics container
-            status_container = st.empty()
-            
-            # Real-time progress callback
+            # Progress callback
             def update_ui_progress(progress_data):
-                """Update UI elements with progress information."""
                 try:
                     progress = progress_data.get('progress', 0)
                     message = progress_data.get('message', 'Processing...')
                     
-                    # Update progress bar
                     progress_bar.progress(min(progress, 1.0))
-                    
-                    # Update progress text
                     progress_text.text(f"📊 {message}")
                     
                 except Exception as e:
                     logger.warning(f"Error updating UI progress: {e}")
             
-            # Initialize analysis engine with progress callback
+            # Initialize analysis engine
             analysis_engine = AnalysisEngine(api_key, progress_callback=update_ui_progress)
             
-            # Use the raw JSON string for processing
-            json_string_for_ai = source_result.get('json_output_raw') if source_result else json.dumps(json_data)
+            # Use raw JSON string for processing
+            json_string_for_ai = source_result.get('json_output_raw') if source_result else json_string
             
-            # Process with real-time updates
-            logger.info("Starting parallel AI analysis...")
+            # Process with single request
+            logger.info("Starting single AI analysis request...")
             results = await analysis_engine.process_json_content(json_string_for_ai)
             
             # Update final progress
             progress_bar.progress(1.0)
-            progress_text.text("✅ Analysis completed!")
+            progress_text.text("✅ Single-request analysis completed!")
             
-            # Add tracking information to results
+            # Add tracking information
             if results.get('success') and source_result:
                 results['processing_timestamp'] = source_result.get('processing_timestamp', 0)
                 results['source_url'] = source_result.get('url', 'Processed Content')
                 results['input_mode'] = source_result.get('input_mode', 'unknown')
                 results['content_hash'] = hash(json_string_for_ai)
             
-            # Show final statistics with appropriate messaging
+            # Show final status
             if results['success']:
                 processing_time = results.get('processing_time', 0)
                 
                 if input_mode == 'url':
-                    st.success(f"✅ AI analysis completed for URL content in {processing_time:.2f} seconds")
+                    st.success(f"✅ Single-request AI analysis completed for URL content in {processing_time:.2f} seconds")
                 elif input_mode == 'direct_json':
-                    st.success(f"✅ AI analysis completed for direct JSON input in {processing_time:.2f} seconds")
+                    st.success(f"✅ Single-request AI analysis completed for direct JSON in {processing_time:.2f} seconds")
                 elif input_mode == 'raw_content':
-                    st.success(f"✅ AI analysis completed for chunked raw content in {processing_time:.2f} seconds")
+                    st.success(f"✅ Single-request AI analysis completed for chunked content in {processing_time:.2f} seconds")
                 else:
-                    st.success(f"✅ AI analysis completed in {processing_time:.2f} seconds")
+                    st.success(f"✅ Single-request AI analysis completed in {processing_time:.2f} seconds")
             else:
                 st.error(f"❌ Analysis failed: {results.get('error', 'Unknown error')}")
         
@@ -671,7 +670,7 @@ async def process_ai_analysis(json_output: str, api_key: str, source_result: dic
 def main():
     """
     Main application function.
-    Enhanced to support three input modes: URL, Direct JSON, and Raw Content.
+    UPDATED: Single request AI analysis
     """
     # Check authentication first
     if not check_authentication():
@@ -685,14 +684,14 @@ def main():
     debug_mode = config['debug_mode']
     api_key = config['api_key']
     
-    # Store debug mode in session state for use in validation
+    # Store debug mode in session state
     st.session_state['debug_mode'] = debug_mode
     
     # Create main content layout
     col1, col2 = st.columns([2, 1])
     
     with col1:
-        # Enhanced dual input section (now with three modes)
+        # Input section
         input_mode, content, process_clicked = create_dual_input_section()
         
         # Process input when button is clicked
@@ -706,7 +705,7 @@ def main():
                     display_error_message("Please provide raw content to process")
                 return
             
-            # Route to appropriate workflow based on input mode
+            # Route to appropriate workflow
             if input_mode == "🌐 URL Input":
                 result = process_url_workflow(content, debug_mode)
             elif input_mode == "📄 Direct JSON":
@@ -732,24 +731,24 @@ def main():
         st.markdown("---")
         st.subheader("📊 Results")
         
-        # Pass the parsed JSON dict for AI analysis
+        # Get JSON for AI analysis
         json_for_ai = result['json_output']
         
-        # AI Analysis button and processing
+        # AI Analysis button and processing (UPDATED)
         if create_ai_analysis_section(api_key, json_for_ai, result):
             if not api_key:
                 display_error_message("OpenAI API key is required for AI analysis")
             else:
                 try:
-                    # Pass the parsed JSON dict for processing
-                    with st.spinner("✨ Initializing AI analysis..."):
+                    # Single request AI analysis
+                    with st.spinner("✨ Initializing single-request AI analysis..."):
                         ai_results = asyncio.run(process_ai_analysis(
                             json_for_ai, 
                             api_key, 
                             source_result=result
                         ))
                     
-                    # Store results in session state
+                    # Store results
                     st.session_state['ai_analysis_result'] = ai_results
                     
                     if not ai_results.get('success'):
@@ -757,18 +756,18 @@ def main():
                     else:
                         input_mode = result.get('input_mode', 'url')
                         if input_mode == 'url':
-                            st.success("✅ Fresh AI analysis completed for URL content!")
+                            st.success("✅ Single-request AI analysis completed for URL content!")
                         elif input_mode == 'direct_json':
-                            st.success("✅ Fresh AI analysis completed for direct JSON input!")
+                            st.success("✅ Single-request AI analysis completed for direct JSON!")
                         elif input_mode == 'raw_content':
-                            st.success("✅ Fresh AI analysis completed for chunked raw content!")
+                            st.success("✅ Single-request AI analysis completed for chunked content!")
                         
                 except Exception as e:
                     error_msg = f"An error occurred during AI analysis: {str(e)}"
                     display_error_message(error_msg)
                     logger.error(error_msg)
         
-        # Validate AI results freshness before display
+        # Validate AI results freshness
         ai_result = st.session_state.get('ai_analysis_result')
         if ai_result and not validate_analysis_freshness(result, ai_result):
             st.warning("⚠️ **Stale AI Results Detected**: The AI analysis shown below may be from a previous analysis.")
@@ -782,7 +781,6 @@ def main():
 def create_workflow_functions():
     """
     Create workflow helper functions for backwards compatibility.
-    Now includes the new raw content workflow.
     """
     
     def process_url_workflow_with_logging(url, log_callback=None):
@@ -791,7 +789,7 @@ def create_workflow_functions():
         return process_url_workflow(url, debug_mode)
     
     def process_raw_content_workflow_with_logging(content, log_callback=None):
-        """New function for raw content processing with logging."""
+        """Function for raw content processing with logging."""
         debug_mode = log_callback is not None
         return process_raw_content_workflow(content, debug_mode)
     

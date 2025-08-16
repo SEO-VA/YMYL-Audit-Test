@@ -1,10 +1,7 @@
 #!/usr/bin/env python3
 """
 JSON processing utilities for YMYL Audit Tool
-
-Helper functions for parsing and manipulating JSON data.
-
-FIXED: Enhanced Unicode handling to prevent surrogate pair errors
+UPDATED: Single request architecture - process AI JSON array response
 """
 
 import json
@@ -18,42 +15,26 @@ logger = setup_logger(__name__)
 
 
 def decode_unicode_escapes(text: str) -> str:
-    """
-    ENHANCED: Decode Unicode escape sequences while handling surrogate pairs safely.
-    This is the single source of truth for Unicode decoding.
-    
-    Args:
-        text (str): Text with potential Unicode escapes
-        
-    Returns:
-        str: Text with decoded Unicode characters, surrogates safely handled
-    """
+    """Decode Unicode escape sequences safely."""
     try:
         def safe_decode_match(match):
             try:
                 unicode_code = match.group(1)
                 code_point = int(unicode_code, 16)
                 
-                # Check for surrogate pairs (0xD800-0xDFFF range)
                 if 0xD800 <= code_point <= 0xDFFF:
-                    # This is a surrogate - replace with safe replacement character
                     logger.warning(f"Replacing surrogate Unicode \\u{unicode_code} with replacement character")
-                    return '\uFFFD'  # Unicode replacement character
+                    return '\uFFFD'
                 
-                # Normal Unicode character
                 return chr(code_point)
                 
             except (ValueError, OverflowError) as e:
                 logger.warning(f"Invalid Unicode escape \\u{match.group(1)}: {e}")
-                return '\uFFFD'  # Unicode replacement character
+                return '\uFFFD'
         
-        # First pass: handle \\u sequences
         decoded = re.sub(r'\\u([0-9a-fA-F]{4})', safe_decode_match, text)
-        
-        # Second pass: clean any remaining problematic characters
         decoded = clean_surrogate_pairs(decoded)
         
-        # Log if decoding actually changed something
         if decoded != text:
             original_unicode_count = text.count('\\u')
             remaining_unicode_count = decoded.count('\\u')
@@ -63,38 +44,21 @@ def decode_unicode_escapes(text: str) -> str:
         
     except Exception as e:
         logger.error(f"Unicode decoding failed: {e}")
-        # Return cleaned version as fallback
         return clean_surrogate_pairs(text)
 
 
 def clean_surrogate_pairs(text: str) -> str:
-    """
-    Clean surrogate pairs and other problematic Unicode characters from text.
-    
-    Args:
-        text (str): Text that may contain surrogate pairs
-        
-    Returns:
-        str: Cleaned text safe for UTF-8 encoding
-    """
+    """Clean surrogate pairs from text."""
     try:
-        # Method 1: Use encode with 'replace' error handling
-        # This will replace problematic characters with '?'
         cleaned = text.encode('utf-8', errors='replace').decode('utf-8')
-        
-        # Method 2: More aggressive cleaning - replace surrogates with Unicode replacement character
-        import unicodedata
         
         def replace_problematic_char(char):
             try:
-                # Test if character can be encoded safely
                 char.encode('utf-8')
                 return char
             except UnicodeEncodeError:
-                # Replace with Unicode replacement character
                 return '\uFFFD'
         
-        # Apply character-by-character cleaning
         final_cleaned = ''.join(replace_problematic_char(char) for char in cleaned)
         
         if final_cleaned != text:
@@ -105,45 +69,28 @@ def clean_surrogate_pairs(text: str) -> str:
         
     except Exception as e:
         logger.error(f"Error cleaning surrogate pairs: {e}")
-        # Last resort: use ASCII-safe encoding
         return text.encode('ascii', errors='replace').decode('ascii')
 
 
 def safe_json_dumps(data: Any, **kwargs) -> str:
-    """
-    Safely serialize data to JSON with Unicode handling.
-    
-    Args:
-        data: Data to serialize
-        **kwargs: Additional arguments for json.dumps
-        
-    Returns:
-        str: JSON string safe for UTF-8 encoding
-    """
+    """Safely serialize data to JSON."""
     try:
-        # Set safe defaults
         safe_kwargs = {
-            'ensure_ascii': False,  # Allow Unicode characters
+            'ensure_ascii': False,
             'separators': (',', ': '),
             'indent': kwargs.get('indent', 2)
         }
         safe_kwargs.update(kwargs)
         
-        # First attempt: normal JSON serialization
         json_str = json.dumps(data, **safe_kwargs)
-        
-        # Clean any problematic characters
         cleaned_json = clean_surrogate_pairs(json_str)
-        
-        # Verify the result is valid JSON
-        json.loads(cleaned_json)  # This will raise if invalid
+        json.loads(cleaned_json)  # Validate
         
         return cleaned_json
         
     except (UnicodeEncodeError, json.JSONDecodeError) as e:
         logger.warning(f"JSON serialization had Unicode issues, using ASCII-safe mode: {e}")
         
-        # Fallback: use ensure_ascii=True
         safe_kwargs['ensure_ascii'] = True
         try:
             return json.dumps(data, **safe_kwargs)
@@ -153,20 +100,9 @@ def safe_json_dumps(data: Any, **kwargs) -> str:
 
 
 def safe_json_loads(json_str: str) -> Any:
-    """
-    Safely parse JSON string with Unicode handling.
-    
-    Args:
-        json_str (str): JSON string to parse
-        
-    Returns:
-        Any: Parsed data or None if parsing fails
-    """
+    """Safely parse JSON string."""
     try:
-        # Clean the input first
         cleaned_json = clean_surrogate_pairs(json_str)
-        
-        # Attempt to parse
         return json.loads(cleaned_json)
         
     except json.JSONDecodeError as e:
@@ -177,85 +113,23 @@ def safe_json_loads(json_str: str) -> Any:
         return None
 
 
-def extract_big_chunks(json_data: Dict[str, Any]) -> List[Dict[str, Any]]:
-    """
-    Extract and format big chunks for AI processing.
-    
-    ENHANCED: Now with safe Unicode handling
-    
-    Args:
-        json_data (dict): Parsed JSON data from chunk processor
-        
-    Returns:
-        list: List of chunk dictionaries with index, text, count, and metadata
-    """
-    try:
-        big_chunks = json_data.get('big_chunks', [])
-        chunks = []
-        
-        for chunk in big_chunks:
-            chunk_index = chunk.get('big_chunk_index', len(chunks) + 1)
-            small_chunks = chunk.get('small_chunks', [])
-            
-            # Join small chunks with newlines and clean Unicode
-            raw_text = '\n'.join(str(sc) for sc in small_chunks)
-            cleaned_text = clean_surrogate_pairs(raw_text)
-            
-            # Add content validation and metadata
-            chunk_data = {
-                "index": chunk_index,
-                "text": cleaned_text,
-                "count": len(small_chunks),
-                "text_length": len(cleaned_text),
-                "text_hash": _generate_content_hash(cleaned_text),
-                "extracted_at": datetime.now().isoformat(),
-                "unicode_cleaned": cleaned_text != raw_text
-            }
-            
-            # Validate chunk has meaningful content
-            if cleaned_text.strip() and len(cleaned_text.strip()) > 10:
-                chunks.append(chunk_data)
-            else:
-                logger.warning(f"Skipping empty or too short chunk {chunk_index}")
-        
-        logger.info(f"Extracted {len(chunks)} valid big chunks from JSON data")
-        return chunks
-        
-    except Exception as e:
-        logger.error(f"Error extracting big chunks: {e}")
-        return []
-
-
 def parse_json_output(json_string: str) -> Optional[Dict[str, Any]]:
-    """
-    Safely parse JSON string with error handling and validation.
-    
-    ENHANCED: Now uses safe Unicode handling
-    
-    Args:
-        json_string (str): JSON string to parse
-        
-    Returns:
-        dict or None: Parsed JSON data with metadata or None if parsing fails
-    """
+    """Parse JSON string with validation."""
     try:
         if not json_string or not json_string.strip():
             logger.error("Empty JSON string provided")
             return None
         
-        # Use safe JSON parsing
         parsed_data = safe_json_loads(json_string)
         if parsed_data is None:
             return None
         
-        # Add metadata for tracking
         if isinstance(parsed_data, dict):
             parsed_data['_metadata'] = {
                 'parsed_at': datetime.now().isoformat(),
                 'content_hash': _generate_content_hash(json_string),
                 'content_length': len(json_string),
-                'parser_version': '1.3.0',  # Updated version
-                'unicode_cleaned': True
+                'parser_version': '2.0.0'
             }
         
         logger.info(f"Successfully parsed JSON ({len(json_string):,} characters)")
@@ -266,76 +140,125 @@ def parse_json_output(json_string: str) -> Optional[Dict[str, Any]]:
         return None
 
 
-def format_json_for_display(json_data: Union[Dict[str, Any], str], max_length: int = 1000) -> str:
+def convert_ai_response_to_markdown(ai_response: List[Dict[str, Any]]) -> str:
     """
-    Format JSON data for display with proper Unicode handling.
-    
-    ENHANCED: Now uses safe JSON serialization
-    
-    Args:
-        json_data: JSON data to format (dict or string)
-        max_length (int): Maximum length of formatted string
-        
-    Returns:
-        str: Formatted JSON string with readable Unicode characters
+    Convert AI JSON array response to markdown report.
+    NEW: Main function for single-request architecture
     """
     try:
-        # Handle different input types
-        if isinstance(json_data, dict):
-            # Create display version without internal metadata
-            display_data = _create_display_version(json_data)
-            formatted = safe_json_dumps(display_data, indent=2)
-        elif isinstance(json_data, str):
-            # If it's already a string, try to parse and reformat for consistency
-            parsed = safe_json_loads(json_data)
-            if parsed is not None:
-                display_data = _create_display_version(parsed) if isinstance(parsed, dict) else parsed
-                formatted = safe_json_dumps(display_data, indent=2)
-            else:
-                # If parsing fails, clean the string
-                formatted = clean_surrogate_pairs(json_data)
-        else:
-            # Fallback to string representation
-            formatted = clean_surrogate_pairs(str(json_data))
+        if not isinstance(ai_response, list):
+            logger.error("AI response is not a list")
+            return "❌ **Error**: Invalid AI response format"
         
-        # Apply truncation if needed
-        if len(formatted) > max_length:
-            truncated = formatted[:max_length]
-            # Try to end at a complete line
-            last_newline = truncated.rfind('\n')
-            if last_newline > max_length * 0.8:  # If we're close to the end
-                truncated = truncated[:last_newline]
-            
-            truncated += f"\n... (truncated, full length: {len(formatted):,} characters)"
-            return truncated
+        report_parts = []
         
-        return formatted
+        # Add report header
+        report_parts.append(f"""# YMYL Compliance Audit Report
+
+**Date:** {datetime.now().strftime("%Y-%m-%d")}
+**Analysis Type:** Single Request Analysis
+
+---
+
+""")
+        
+        # Process each chunk response
+        sections_with_violations = 0
+        total_violations = 0
+        
+        for chunk_response in ai_response:
+            try:
+                chunk_index = chunk_response.get('big_chunk_index', 'Unknown')
+                content_name = chunk_response.get('content_name', f'Section {chunk_index}')
+                violations = chunk_response.get('violations', [])
+                
+                # Handle "no violation found" case
+                if violations == "no violation found" or not violations:
+                    continue
+                
+                # Add section header
+                report_parts.append(f"## {content_name}\n\n")
+                sections_with_violations += 1
+                
+                # Process violations
+                for i, violation in enumerate(violations, 1):
+                    total_violations += 1
+                    
+                    severity_emoji = {
+                        "critical": "🔴",
+                        "high": "🟠",
+                        "medium": "🟡", 
+                        "low": "🔵"
+                    }.get(violation.get("severity", "medium"), "🟡")
+                    
+                    # Clean all text fields
+                    violation_type = clean_surrogate_pairs(str(violation.get('violation_type', 'Unknown violation')))
+                    problematic_text = clean_surrogate_pairs(str(violation.get('problematic_text', 'N/A')))
+                    explanation = clean_surrogate_pairs(str(violation.get('explanation', 'No explanation provided')))
+                    suggested_rewrite = clean_surrogate_pairs(str(violation.get('suggested_rewrite', 'No suggestion provided')))
+                    
+                    # Handle translation fields
+                    translation = violation.get('translation', '')
+                    rewrite_translation = violation.get('rewrite_translation', '')
+                    
+                    violation_text = f"""**{severity_emoji} Violation {i}**
+- **Issue:** {violation_type}
+- **Problematic Text:** "{problematic_text}"
+"""
+                    
+                    # Add translation if present
+                    if translation:
+                        clean_translation = clean_surrogate_pairs(str(translation))
+                        violation_text += f"- **Translation:** \"{clean_translation}\"\n"
+                    
+                    violation_text += f"""- **Explanation:** {explanation}
+- **Guideline Reference:** Section {violation.get('guideline_section', 'N/A')} (Page {violation.get('page_number', 'N/A')})
+- **Severity:** {violation.get('severity', 'medium').title()}
+- **Suggested Fix:** "{suggested_rewrite}"
+"""
+                    
+                    # Add rewrite translation if present
+                    if rewrite_translation:
+                        clean_rewrite_translation = clean_surrogate_pairs(str(rewrite_translation))
+                        violation_text += f"- **Translation of Fix:** \"{clean_rewrite_translation}\"\n"
+                    
+                    violation_text += "\n"
+                    report_parts.append(violation_text)
+                
+                report_parts.append("\n")
+                
+            except Exception as e:
+                logger.error(f"Error processing chunk {chunk_response.get('big_chunk_index', 'Unknown')}: {e}")
+                continue
+        
+        # Add summary if no violations found
+        if sections_with_violations == 0:
+            report_parts.append("✅ **No violations found across all content sections.**\n\n")
+        
+        # Add processing summary
+        report_parts.append(f"""## 📈 Analysis Summary
+
+**Sections with Violations:** {sections_with_violations}
+**Total Violations:** {total_violations}
+**Analysis Method:** Single Request Processing
+
+""")
+        
+        final_report = ''.join(report_parts)
+        return clean_surrogate_pairs(final_report)
         
     except Exception as e:
-        logger.error(f"Error formatting JSON for display: {e}")
-        error_msg = f"Error formatting JSON: {str(e)}"
-        return clean_surrogate_pairs(error_msg)
+        logger.error(f"Error converting AI response to markdown: {e}")
+        return f"❌ **Error**: Failed to process AI response - {str(e)}"
 
 
 def get_display_json_string(json_data: Union[Dict[str, Any], str]) -> str:
-    """
-    Get a clean JSON string for UI display with proper Unicode handling.
-    
-    ENHANCED: Now uses safe JSON serialization
-    
-    Args:
-        json_data: JSON data (dict or string)
-        
-    Returns:
-        str: Clean, readable JSON string
-    """
+    """Get clean JSON string for UI display."""
     try:
         if isinstance(json_data, dict):
-            # Convert dict to formatted JSON string
             display_data = _create_display_version(json_data)
             return safe_json_dumps(display_data, indent=2)
         elif isinstance(json_data, str):
-            # If it's a string, ensure it's properly formatted JSON
             parsed = safe_json_loads(json_data)
             if parsed is not None:
                 if isinstance(parsed, dict):
@@ -344,10 +267,8 @@ def get_display_json_string(json_data: Union[Dict[str, Any], str]) -> str:
                 else:
                     return safe_json_dumps(parsed, indent=2)
             else:
-                # If it's not valid JSON, return cleaned string
                 return clean_surrogate_pairs(json_data)
         else:
-            # Convert other types to JSON
             return safe_json_dumps(json_data, indent=2)
             
     except Exception as e:
@@ -356,24 +277,12 @@ def get_display_json_string(json_data: Union[Dict[str, Any], str]) -> str:
 
 
 def validate_chunk_structure(json_data: Dict[str, Any]) -> bool:
-    """
-    Validate that JSON data has the expected chunk structure.
-    
-    ENHANCED: Better validation with Unicode safety
-    
-    Args:
-        json_data (dict): Parsed JSON data to validate
-        
-    Returns:
-        bool: True if structure is valid, False otherwise
-    """
+    """Validate JSON chunk structure."""
     try:
-        # Check for required top-level structure
         if not isinstance(json_data, dict):
             logger.warning("JSON data is not a dictionary")
             return False
         
-        # Check for big_chunks array
         big_chunks = json_data.get('big_chunks')
         if not isinstance(big_chunks, list):
             logger.warning("Missing or invalid 'big_chunks' array")
@@ -383,7 +292,6 @@ def validate_chunk_structure(json_data: Dict[str, Any]) -> bool:
             logger.warning("Empty 'big_chunks' array")
             return False
         
-        # Validate each chunk structure with detailed checking
         valid_chunks = 0
         for i, chunk in enumerate(big_chunks):
             if not isinstance(chunk, dict):
@@ -399,12 +307,10 @@ def validate_chunk_structure(json_data: Dict[str, Any]) -> bool:
                 logger.warning(f"Chunk {i} 'small_chunks' is not a list")
                 continue
             
-            # Validate chunk content quality with Unicode safety
             if len(small_chunks) == 0:
                 logger.warning(f"Chunk {i} has empty 'small_chunks'")
                 continue
             
-            # Check if chunks have meaningful content (with Unicode cleaning)
             total_content = '\n'.join(str(sc) for sc in small_chunks)
             cleaned_content = clean_surrogate_pairs(total_content)
             
@@ -427,416 +333,30 @@ def validate_chunk_structure(json_data: Dict[str, Any]) -> bool:
         return False
 
 
-def get_chunk_statistics(json_data: Dict[str, Any]) -> Dict[str, Any]:
-    """
-    Calculate comprehensive statistics about the chunks.
-    
-    ENHANCED: Now includes Unicode cleaning statistics
-    
-    Args:
-        json_data (dict): Parsed JSON data
-        
-    Returns:
-        dict: Comprehensive statistics about the chunks
-    """
-    try:
-        big_chunks = json_data.get('big_chunks', [])
-        
-        total_big_chunks = len(big_chunks)
-        total_small_chunks = 0
-        valid_chunks = 0
-        empty_chunks = 0
-        unicode_issues_fixed = 0
-        
-        # Calculate text statistics
-        total_text_length = 0
-        chunk_sizes = []
-        content_hashes = []
-        
-        for chunk in big_chunks:
-            small_chunks = chunk.get('small_chunks', [])
-            raw_text = '\n'.join(str(sc) for sc in small_chunks)
-            cleaned_text = clean_surrogate_pairs(raw_text)
-            
-            # Track Unicode issues
-            if cleaned_text != raw_text:
-                unicode_issues_fixed += 1
-            
-            chunk_length = len(cleaned_text)
-            
-            total_small_chunks += len(small_chunks)
-            total_text_length += chunk_length
-            chunk_sizes.append(chunk_length)
-            
-            # Track content quality
-            if cleaned_text.strip() and len(cleaned_text.strip()) > 10:
-                valid_chunks += 1
-                content_hashes.append(_generate_content_hash(cleaned_text))
-            else:
-                empty_chunks += 1
-        
-        # Calculate averages and quality metrics
-        avg_small_chunks_per_big = total_small_chunks / total_big_chunks if total_big_chunks > 0 else 0
-        avg_chunk_size = total_text_length / total_big_chunks if total_big_chunks > 0 else 0
-        content_diversity = len(set(content_hashes)) / len(content_hashes) if content_hashes else 0
-        
-        stats = {
-            'total_big_chunks': total_big_chunks,
-            'total_small_chunks': total_small_chunks,
-            'valid_chunks': valid_chunks,
-            'empty_chunks': empty_chunks,
-            'unicode_issues_fixed': unicode_issues_fixed,  # NEW
-            'total_text_length': total_text_length,
-            'avg_small_chunks_per_big': round(avg_small_chunks_per_big, 2),
-            'avg_chunk_size': round(avg_chunk_size, 2),
-            'min_chunk_size': min(chunk_sizes) if chunk_sizes else 0,
-            'max_chunk_size': max(chunk_sizes) if chunk_sizes else 0,
-            'content_diversity': round(content_diversity, 3),
-            'quality_score': round(valid_chunks / total_big_chunks if total_big_chunks > 0 else 0, 3),
-            'metadata': json_data.get('_metadata', {}),
-            'calculated_at': datetime.now().isoformat()
-        }
-        
-        logger.info(f"Calculated comprehensive chunk statistics: {stats['total_big_chunks']} chunks, {stats['quality_score']} quality score, {unicode_issues_fixed} Unicode issues fixed")
-        return stats
-        
-    except Exception as e:
-        logger.error(f"Error calculating chunk statistics: {e}")
-        return {
-            'total_big_chunks': 0,
-            'total_small_chunks': 0,
-            'valid_chunks': 0,
-            'empty_chunks': 0,
-            'unicode_issues_fixed': 0,
-            'total_text_length': 0,
-            'avg_small_chunks_per_big': 0,
-            'avg_chunk_size': 0,
-            'min_chunk_size': 0,
-            'max_chunk_size': 0,
-            'content_diversity': 0,
-            'quality_score': 0,
-            'error': str(e),
-            'calculated_at': datetime.now().isoformat()
-        }
-
-
-def convert_violations_json_to_readable(json_content: str) -> str:
-    """
-    Convert JSON violations format to human-readable markdown.
-    Now supports the new content_name field from AI prompt AND the new explanation field.
-    
-    ENHANCED: Safe Unicode handling + explanation field support
-    
-    Args:
-        json_content (str): JSON string with violations
-        
-    Returns:
-        str: Human-readable markdown format
-    """
-    try:
-        # Use safe JSON parsing
-        violations_data = safe_json_loads(json_content)
-        if violations_data is None:
-            return "❌ **Could not parse violations data.**\n\n"
-        
-        violations = violations_data.get("violations", [])
-        
-        if not violations:
-            return "✅ **No violations found in this section.**\n\n"
-        
-        readable_parts = []
-        
-        for i, violation in enumerate(violations, 1):
-            severity_emoji = {
-                "critical": "🔴",
-                "high": "🟠",     # Added high severity support
-                "medium": "🟡", 
-                "low": "🔵"
-            }.get(violation.get("severity", "medium"), "🟡")
-            
-            # Safely extract and clean all text fields
-            violation_type = clean_surrogate_pairs(str(violation.get('violation_type', 'Unknown violation')))
-            problematic_text = clean_surrogate_pairs(str(violation.get('problematic_text', 'N/A')))
-            translation = clean_surrogate_pairs(str(violation.get('translation', 'N/A')))
-            suggested_rewrite = clean_surrogate_pairs(str(violation.get('suggested_rewrite', 'No suggestion provided')))
-            rewrite_translation = clean_surrogate_pairs(str(violation.get('rewrite_translation', 'N/A')))
-            
-            # NEW: Handle the explanation field
-            explanation = clean_surrogate_pairs(str(violation.get('explanation', 'No explanation provided')))
-            
-            violation_text = f"""**{severity_emoji} Violation {i}**
-- **Issue:** {violation_type}
-- **Problematic Text:** "{problematic_text}"
-- **Translation:** "{translation}"
-- **Explanation:** {explanation}
-- **Guideline Reference:** Section {violation.get('guideline_section', 'N/A')} (Page {violation.get('page_number', 'N/A')})
-- **Severity:** {violation.get('severity', 'medium').title()}
-- **Suggested Fix:** "{suggested_rewrite}"
-- **Translation of Fix:** "{rewrite_translation}"
-
-"""
-            readable_parts.append(violation_text)
-        
-        return ''.join(readable_parts)
-        
-    except Exception as e:
-        logger.error(f"Error converting JSON to readable format: {e}")
-        # Return the original content cleaned
-        return clean_surrogate_pairs(str(json_content)) + "\n\n"
-
-
-def create_grouped_violations_report(analysis_results: list) -> str:
-    """
-    Create a violations report grouped by content sections using content_name.
-    
-    ENHANCED: Safe Unicode handling throughout + explanation field support
-    
-    Args:
-        analysis_results (list): List of chunk analysis results from AI
-        
-    Returns:
-        str: Complete grouped violations report
-    """
-    try:
-        readable_parts = []
-        
-        for result in analysis_results:
-            if not result.get('success'):
-                continue
-                
-            chunk_idx = result.get('chunk_index', 'Unknown')
-            
-            # Extract content_name and violations from AI response
-            try:
-                ai_response = safe_json_loads(result['content'])
-                if ai_response is None:
-                    continue
-                
-                content_name = clean_surrogate_pairs(str(ai_response.get('content_name', f'Content Section {chunk_idx}')))
-                violations = ai_response.get('violations', [])
-                
-                # NEW: Also extract explanation if available at the top level
-                section_explanation = ai_response.get('explanation', '')
-                
-                # Only add section if it has violations
-                if violations:
-                    readable_parts.append(f"## {content_name}\n\n")
-                    
-                    # Add section-level explanation if available
-                    if section_explanation and section_explanation != 'No explanation provided':
-                        clean_explanation = clean_surrogate_pairs(str(section_explanation))
-                        readable_parts.append(f"**Analysis Overview:** {clean_explanation}\n\n")
-                    
-                    # Convert violations for this section
-                    violations_content = convert_violations_json_to_readable(result['content'])
-                    readable_parts.append(violations_content)
-                    
-            except Exception as e:
-                # Fallback if AI response processing fails
-                logger.warning(f"Error processing AI response for chunk {chunk_idx}: {e}")
-                continue
-        
-        if not readable_parts:
-            return "✅ **No violations found across all content sections.**\n\n"
-        
-        # Join and clean the final result
-        final_result = ''.join(readable_parts)
-        return clean_surrogate_pairs(final_result)
-        
-    except Exception as e:
-        logger.error(f"Error creating grouped report: {e}")
-        error_msg = f"Error creating grouped report: {str(e)}\n\n"
-        return clean_surrogate_pairs(error_msg)
-
-
-def compare_json_content(json1: str, json2: str) -> Dict[str, Any]:
-    """
-    Compare two JSON content strings for differences.
-    
-    ENHANCED: Safe Unicode handling for comparison
-    
-    Args:
-        json1 (str): First JSON string
-        json2 (str): Second JSON string
-        
-    Returns:
-        dict: Comparison results
-    """
-    try:
-        # Clean both inputs first
-        clean_json1 = clean_surrogate_pairs(json1)
-        clean_json2 = clean_surrogate_pairs(json2)
-        
-        hash1 = _generate_content_hash(clean_json1)
-        hash2 = _generate_content_hash(clean_json2)
-        
-        data1 = safe_json_loads(clean_json1)
-        data2 = safe_json_loads(clean_json2)
-        
-        if not data1 or not data2:
-            return {
-                'identical': False,
-                'error': 'Failed to parse one or both JSON strings',
-                'hash1': hash1,
-                'hash2': hash2,
-                'unicode_cleaned': clean_json1 != json1 or clean_json2 != json2
-            }
-        
-        stats1 = get_chunk_statistics(data1)
-        stats2 = get_chunk_statistics(data2)
-        
-        return {
-            'identical': hash1 == hash2,
-            'hash1': hash1,
-            'hash2': hash2,
-            'chunks1': stats1.get('total_big_chunks', 0),
-            'chunks2': stats2.get('total_big_chunks', 0),
-            'length1': len(clean_json1),
-            'length2': len(clean_json2),
-            'content_diversity1': stats1.get('content_diversity', 0),
-            'content_diversity2': stats2.get('content_diversity', 0),
-            'unicode_cleaned': clean_json1 != json1 or clean_json2 != json2,
-            'compared_at': datetime.now().isoformat()
-        }
-        
-    except Exception as e:
-        logger.error(f"Error comparing JSON content: {e}")
-        return {
-            'identical': False,
-            'error': str(e),
-            'unicode_cleaned': False,
-            'compared_at': datetime.now().isoformat()
-        }
-
-
-def validate_content_freshness(content_data: Dict[str, Any], ai_result: Dict[str, Any]) -> Dict[str, bool]:
-    """
-    Validate that AI results correspond to the given content data.
-    
-    ENHANCED: Safe Unicode handling for validation
-    
-    Args:
-        content_data (dict): Content processing result
-        ai_result (dict): AI analysis result
-        
-    Returns:
-        dict: Validation results with specific checks
-    """
-    try:
-        validation = {
-            'is_fresh': True,
-            'timestamp_match': True,
-            'url_match': True,
-            'content_match': True,
-            'errors': []
-        }
-        
-        # Check processing timestamps
-        content_timestamp = content_data.get('processing_timestamp')
-        ai_timestamp = ai_result.get('processing_timestamp')
-        
-        if content_timestamp is not None and ai_timestamp is not None:
-            validation['timestamp_match'] = (content_timestamp == ai_timestamp)
-        else:
-            validation['timestamp_match'] = False
-            validation['errors'].append('Missing timestamp data')
-        
-        # Check source URLs (with Unicode cleaning)
-        content_url = clean_surrogate_pairs(str(content_data.get('url', '')))
-        ai_url = clean_surrogate_pairs(str(ai_result.get('source_url', '')))
-        
-        if content_url and ai_url:
-            validation['url_match'] = (content_url == ai_url)
-        else:
-            validation['url_match'] = False
-            validation['errors'].append('Missing URL data')
-        
-        # Check content hashes if available
-        content_json = content_data.get('json_output')
-        ai_content_hash = ai_result.get('content_hash')
-        
-        if content_json and ai_content_hash:
-            if isinstance(content_json, dict):
-                # Convert back to string for hashing (with safe serialization)
-                json_string = safe_json_dumps(content_json, sort_keys=True)
-                current_hash = _generate_content_hash(json_string)
-            else:
-                cleaned_content = clean_surrogate_pairs(str(content_json))
-                current_hash = _generate_content_hash(cleaned_content)
-            validation['content_match'] = (current_hash == ai_content_hash)
-        else:
-            validation['content_match'] = True  # Assume match if no hash data
-        
-        # Overall freshness determination
-        validation['is_fresh'] = (
-            validation['timestamp_match'] and 
-            validation['url_match'] and 
-            validation['content_match']
-        )
-        
-        logger.info(f"Content freshness validation: {'Fresh' if validation['is_fresh'] else 'Stale'}")
-        return validation
-        
-    except Exception as e:
-        logger.error(f"Error validating content freshness: {e}")
-        return {
-            'is_fresh': False,
-            'timestamp_match': False,
-            'url_match': False,
-            'content_match': False,
-            'errors': [str(e)]
-        }
-
-
 def _generate_content_hash(content: str) -> str:
-    """
-    Generate a hash for content to enable quick comparison.
-    
-    ENHANCED: Safe Unicode handling for hashing
-    
-    Args:
-        content (str): Content to hash
-        
-    Returns:
-        str: SHA-256 hash of the content
-    """
+    """Generate hash for content comparison."""
     try:
-        # Clean the content first
         cleaned_content = clean_surrogate_pairs(content)
-        return hashlib.sha256(cleaned_content.encode('utf-8')).hexdigest()[:16]  # Short hash for display
+        return hashlib.sha256(cleaned_content.encode('utf-8')).hexdigest()[:16]
     except Exception as e:
         logger.warning(f"Error generating content hash: {e}")
-        # Fallback to ASCII-safe hashing
         ascii_content = content.encode('ascii', errors='replace').decode('ascii')
         return hashlib.sha256(ascii_content.encode('ascii')).hexdigest()[:16]
 
 
 def _create_display_version(json_data: Dict[str, Any]) -> Dict[str, Any]:
-    """
-    Create a version of JSON data suitable for display (removing internal metadata).
-    
-    ENHANCED: Safe Unicode handling
-    
-    Args:
-        json_data (dict): Original JSON data
-        
-    Returns:
-        dict: Display version without internal fields
-    """
+    """Create display version of JSON data."""
     if not isinstance(json_data, dict):
         return json_data
     
     display_data = {}
     for key, value in json_data.items():
-        # Skip internal metadata fields
         if key.startswith('_'):
             continue
         
-        # Clean Unicode in string values
         if isinstance(value, str):
             display_data[key] = clean_surrogate_pairs(value)
         elif isinstance(value, list):
-            # Clean Unicode in list items
             cleaned_list = []
             for item in value:
                 if isinstance(item, str):
@@ -854,106 +374,19 @@ def _create_display_version(json_data: Dict[str, Any]) -> Dict[str, Any]:
     return display_data
 
 
-def get_content_summary(json_data: Dict[str, Any]) -> Dict[str, Any]:
-    """
-    Get a quick summary of JSON content for UI display.
-    
-    ENHANCED: Safe Unicode handling for summary
-    
-    Args:
-        json_data (dict): Parsed JSON data
-        
-    Returns:
-        dict: Content summary
-    """
-    try:
-        stats = get_chunk_statistics(json_data)
-        metadata = json_data.get('_metadata', {})
-        
-        return {
-            'total_chunks': stats.get('total_big_chunks', 0),
-            'valid_chunks': stats.get('valid_chunks', 0),
-            'total_length': stats.get('total_text_length', 0),
-            'quality_score': stats.get('quality_score', 0),
-            'unicode_issues_fixed': stats.get('unicode_issues_fixed', 0),  # NEW
-            'content_hash': metadata.get('content_hash', 'unknown'),
-            'parsed_at': metadata.get('parsed_at', 'unknown'),
-            'avg_chunk_size': stats.get('avg_chunk_size', 0)
-        }
-        
-    except Exception as e:
-        logger.error(f"Error getting content summary: {e}")
-        return {
-            'total_chunks': 0,
-            'valid_chunks': 0,
-            'total_length': 0,
-            'quality_score': 0,
-            'unicode_issues_fixed': 0,
-            'content_hash': 'error',
-            'parsed_at': 'error',
-            'avg_chunk_size': 0,
-            'error': str(e)
-        }
+# REMOVED FUNCTIONS (no longer needed):
+# - extract_big_chunks() - AI processes full content
+# - convert_violations_json_to_readable() - replaced by convert_ai_response_to_markdown()
+# - create_grouped_violations_report() - AI handles organization
 
 
-# Test function to validate Unicode handling
-def test_unicode_handling():
-    """
-    Test function to validate Unicode handling improvements.
-    """
-    test_cases = [
-        # Normal Unicode
-        "Hello 世界",
-        # Unicode escapes
-        "Hello \\u4e16\\u754c",
-        # Surrogate pairs (problematic)
-        "Hello \\ud83d\\ude00",  # Emoji
-        # Mixed content
-        "Normal text with \\u4e16\\u754c and \\ud83d\\ude00",
-        # JSON with Unicode
-        '{"text": "Hello \\u4e16\\u754c", "emoji": "\\ud83d\\ude00"}'
-    ]
-    
-    logger.info("Testing Unicode handling...")
-    
-    for i, test_case in enumerate(test_cases, 1):
-        logger.info(f"Test {i}: {test_case[:50]}...")
-        
-        try:
-            # Test decode_unicode_escapes
-            decoded = decode_unicode_escapes(test_case)
-            logger.info(f"  Decoded: {decoded[:50]}...")
-            
-            # Test clean_surrogate_pairs
-            cleaned = clean_surrogate_pairs(decoded)
-            logger.info(f"  Cleaned: {cleaned[:50]}...")
-            
-            # Test UTF-8 encoding
-            encoded = cleaned.encode('utf-8')
-            logger.info(f"  UTF-8 encoding: SUCCESS ({len(encoded)} bytes)")
-            
-        except Exception as e:
-            logger.error(f"  Test {i} FAILED: {e}")
-    
-    logger.info("Unicode handling tests completed")
-
-
-# ENHANCED: Enhanced exports for better module interface
 __all__ = [
-    'convert_violations_json_to_readable',
-    'create_grouped_violations_report',
     'decode_unicode_escapes',
-    'clean_surrogate_pairs',  # NEW
-    'safe_json_dumps',  # NEW
-    'safe_json_loads',  # NEW
-    'extract_big_chunks',
+    'clean_surrogate_pairs',
+    'safe_json_dumps',
+    'safe_json_loads',
     'parse_json_output',
-    'format_json_for_display',
+    'convert_ai_response_to_markdown',  # NEW: Main function for single-request
     'get_display_json_string',
-    'validate_chunk_structure',
-    'get_chunk_statistics',
-    'compare_json_content',
-    'validate_content_freshness',
-    'get_content_summary',
-    'test_unicode_handling'  # NEW
+    'validate_chunk_structure'
 ]

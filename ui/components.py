@@ -389,44 +389,43 @@ def create_simple_progress_tracker() -> tuple[Any, Callable[[str], None]]:
 def create_ai_analysis_section(api_key: Optional[str], json_output: Any, source_result: Optional[Dict] = None) -> bool:
     """
     Create AI analysis section with processing button.
-    Works with all three input modes: URL, direct JSON, and raw content.
+    UPDATED: Single request architecture messaging
     """
     if not api_key:
         st.info("💡 **Tip**: Add your OpenAI API key to enable AI compliance analysis!")
         return False
-    # Show different messaging based on input mode
+    
     input_mode = st.session_state.get('input_mode', '🌐 URL Input')
     st.markdown("### ✨ AI Compliance Analysis")
-    # Show analysis readiness status
+    
     if json_output:
         try:
-            # Handle both dict and string inputs
             if isinstance(json_output, dict):
                 data = json_output
             else:
                 import json
                 data = json.loads(json_output)
             chunk_count = len(data.get('big_chunks', []))
+            
             col1, col2 = st.columns([2, 1])
             with col2:
-                # Check for existing AI results
                 ai_result = st.session_state.get('ai_analysis_result')
                 if ai_result and ai_result.get('success'):
-                    # Validate freshness of AI results
                     is_fresh = True
                     if source_result:
                         source_timestamp = source_result.get('processing_timestamp', 0)
                         ai_timestamp = ai_result.get('processing_timestamp', -1)
                         is_fresh = (source_timestamp == ai_timestamp)
                     if is_fresh:
-                        st.success("✅ **Fresh AI Analysis Available** - View results in tabs below")
+                        st.success("✅ **AI Analysis Complete** - View results in tabs below")
                     else:
-                        st.warning("⚠️ **Stale AI Results Detected** - Run analysis again for current content")
+                        st.warning("⚠️ **Stale AI Results** - Run analysis again for current content")
+            
             with col1:
                 button_label = "✨ Run AI Analysis"
                 button_type = "secondary"
-                button_help = "Analyze content for YMYL compliance using AI"
-                # Customize button based on current state
+                button_help = f"Analyze all {chunk_count} sections in single AI request"
+                
                 ai_result = st.session_state.get('ai_analysis_result')
                 if ai_result and ai_result.get('success'):
                     if source_result:
@@ -434,11 +433,12 @@ def create_ai_analysis_section(api_key: Optional[str], json_output: Any, source_
                         ai_timestamp = ai_result.get('processing_timestamp', -1)
                         if source_timestamp == ai_timestamp:
                             button_label = "🔄 Re-run Analysis"
-                            button_help = "Run AI analysis again on current content"
+                            button_help = f"Re-analyze all {chunk_count} sections with AI"
                         else:
                             button_label = "🆕 Analyze New Content"
-                            button_help = "Run AI analysis on the new content"
+                            button_help = f"Analyze new content ({chunk_count} sections) with AI"
                             button_type = "primary"
+                
                 return st.button(
                     button_label,
                     type=button_type, 
@@ -457,42 +457,252 @@ def create_ai_analysis_section(api_key: Optional[str], json_output: Any, source_
         elif input_mode == "📝 Raw Content":
             st.info("📝 Provide raw content first to enable AI analysis")
         return False
-def create_content_freshness_indicator(content_result: Dict, ai_result: Optional[Dict] = None):
-    """Create indicator showing freshness of analysis results."""
-    if not ai_result:
+
+
+def _create_ai_report_tab(ai_result: Dict[str, Any], content_result: Optional[Dict[str, Any]] = None):
+    """
+    Create AI compliance report tab.
+    UPDATED: Single request architecture messaging
+    """
+    st.markdown("### YMYL Compliance Analysis Report")
+    
+    ai_report = ai_result['report']
+    
+    # Show report statistics
+    try:
+        ai_response = ai_result.get('ai_response', [])
+        if isinstance(ai_response, list):
+            total_violations = 0
+            sections_with_violations = 0
+            
+            for section in ai_response:
+                violations = section.get('violations', [])
+                if violations != "no violation found" and violations:
+                    sections_with_violations += 1
+                    total_violations += len(violations)
+            
+            st.markdown("#### 📊 Analysis Overview")
+            overview_col1, overview_col2, overview_col3 = st.columns(3)
+            
+            with overview_col1:
+                st.metric("Total Violations", total_violations)
+            with overview_col2:
+                st.metric("Sections with Issues", sections_with_violations)
+            with overview_col3:
+                st.metric("Total Sections", len(ai_response))
+            
+            if total_violations > 0:
+                st.info(f"🔍 **Single Request Analysis**: Found {total_violations} compliance issues across {sections_with_violations} content sections.")
+            else:
+                st.success("✅ **Clean Analysis**: No YMYL compliance violations found in any content section.")
+        
+    except Exception as e:
+        st.warning(f"Could not generate analysis overview: {e}")
+    
+    st.markdown("---")
+    
+    # Word download section
+    st.markdown("#### 📄 Download Report")
+    try:
+        from exporters.word_exporter import WordExporter
+        word_exporter = WordExporter()
+        word_bytes = word_exporter.convert(ai_report, "YMYL Compliance Audit Report")
+        
+        timestamp = int(time.time())
+        filename = f"ymyl_compliance_report_{timestamp}.docx"
+        
+        col1, col2, col3 = st.columns([1, 2, 1])
+        with col2:
+            st.download_button(
+                label="📄 Download Word Document",
+                data=word_bytes,
+                file_name=filename,
+                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                help="Single request analysis report - imports perfectly into Google Docs",
+                type="primary",
+                use_container_width=True
+            )
+        
+        st.success("✅ **Ready to download!** Single request analysis with perfect Google Docs formatting.")
+        
+    except Exception as e:
+        st.error(f"Error creating Word document: {e}")
+        timestamp = int(time.time())
+        st.download_button(
+            label="📝 Download Report (Markdown Fallback)",
+            data=ai_report,
+            file_name=f"ymyl_compliance_report_{timestamp}.md",
+            mime="text/markdown"
+        )
+    
+    # View options
+    with st.expander("📖 View Formatted Report"):
+        st.markdown(ai_report)
+    
+    with st.expander("📝 View Raw Markdown"):
+        st.code(ai_report, language='markdown')
+
+
+def _create_individual_analyses_tab(ai_result: Dict[str, Any]):
+    """
+    Create AI analysis details tab.
+    UPDATED: Single request architecture - show AI response structure
+    """
+    st.markdown("### AI Analysis Details")
+    
+    ai_response = ai_result.get('ai_response', [])
+    processing_time = ai_result.get('processing_time', 0)
+    
+    # Processing metrics
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.metric("Processing Time", f"{processing_time:.2f}s")
+    with col2:
+        st.metric("Analysis Mode", "Single Request")
+    with col3:
+        st.metric("Sections Analyzed", len(ai_response) if isinstance(ai_response, list) else 0)
+    
+    st.markdown("---")
+    
+    if not isinstance(ai_response, list):
+        st.error("❌ Invalid AI response format")
         return
-    # Check timestamps
-    content_timestamp = content_result.get('processing_timestamp', 0)
-    ai_timestamp = ai_result.get('processing_timestamp', -1)
-    content_source = content_result.get('url', content_result.get('source', 'Unknown'))
-    ai_source = ai_result.get('source_url', '')
-    is_fresh = (content_timestamp == ai_timestamp)
-    if is_fresh:
-        st.success("✅ **AI Results Match Current Content** - Analysis is up to date")
-    else:
-        st.warning("⚠️ **AI Results May Be Outdated** - Consider re-running AI analysis")
-        with st.expander("🔍 Freshness Details"):
-            st.write(f"**Content Timestamp**: {content_timestamp}")
-            st.write(f"**AI Analysis Timestamp**: {ai_timestamp}")
-            st.write(f"**Content Source**: {content_source}")
-            st.write(f"**AI Analysis Source**: {ai_source}")
+    
+    # Show AI response structure
+    for section in ai_response:
+        try:
+            chunk_index = section.get('big_chunk_index', 'Unknown')
+            content_name = section.get('content_name', f'Section {chunk_index}')
+            violations = section.get('violations', [])
+            
+            # Handle "no violation found" case
+            if violations == "no violation found" or not violations:
+                violation_count = 0
+                status_icon = "✅"
+                status_text = "No violations"
+            else:
+                violation_count = len(violations)
+                status_icon = "⚠️" if violation_count > 0 else "✅"
+                status_text = f"{violation_count} violation{'s' if violation_count != 1 else ''}"
+            
+            with st.expander(f"{status_icon} {content_name} ({status_text})"):
+                tab1, tab2 = st.tabs(["📊 Summary", "🔧 Raw Response"])
+                
+                with tab1:
+                    if violation_count > 0:
+                        st.markdown(f"**Found {violation_count} compliance issues:**")
+                        
+                        for i, violation in enumerate(violations, 1):
+                            severity = violation.get('severity', 'medium')
+                            severity_emoji = {
+                                "critical": "🔴",
+                                "high": "🟠", 
+                                "medium": "🟡",
+                                "low": "🔵"
+                            }.get(severity, "🟡")
+                            
+                            st.write(f"{severity_emoji} **{violation.get('violation_type', 'Unknown')}** ({severity})")
+                            
+                            if violation.get('explanation'):
+                                st.caption(violation['explanation'])
+                    else:
+                        st.success("✅ No YMYL compliance violations found in this section.")
+                
+                with tab2:
+                    st.code(json.dumps(section, indent=2), language='json')
+                    
+        except Exception as e:
+            st.error(f"Error processing section: {e}")
+
+
+def _create_summary_tab(result: Dict[str, Any], ai_result: Optional[Dict[str, Any]] = None):
+    """
+    Create processing summary tab.
+    UPDATED: Single request architecture metrics
+    """
+    st.subheader("Processing Summary")
+    input_mode = st.session_state.get('input_mode', '🌐 URL Input')
+    
+    # Parse JSON for chunk statistics
+    try:
+        json_output_dict = result.get('json_output', {})
+        if isinstance(json_output_dict, dict):
+            big_chunks = json_output_dict.get('big_chunks', [])
+        else:
+            import json
+            if isinstance(json_output_dict, str):
+                parsed_data = json.loads(json_output_dict)
+                big_chunks = parsed_data.get('big_chunks', [])
+            else:
+                big_chunks = []
+        
+        total_small_chunks = sum(len(chunk.get('small_chunks', [])) for chunk in big_chunks)
+        
+        # Content processing metrics
+        if input_mode == "🌐 URL Input":
+            st.markdown("#### URL Content Extraction")
+            colA, colB, colC = st.columns(3)
+            colA.metric("Big Chunks", len(big_chunks))
+            colB.metric("Total Small Chunks", total_small_chunks)
+            colC.metric("Extracted Length", f"{len(result.get('extracted_content', '')):,} chars")
+        elif input_mode == "📄 Direct JSON":
+            st.markdown("#### Direct JSON Input")
+            colA, colB, colC = st.columns(3)
+            colA.metric("Big Chunks", len(big_chunks))
+            colB.metric("Total Small Chunks", total_small_chunks)
+            total_content = sum(len('\n'.join(chunk.get('small_chunks', []))) for chunk in big_chunks)
+            colC.metric("Total Content", f"{total_content:,} chars")
+        elif input_mode == "📝 Raw Content":
+            st.markdown("#### Raw Content Chunking")
+            colA, colB, colC = st.columns(3)
+            colA.metric("Big Chunks Created", len(big_chunks))
+            colB.metric("Total Small Chunks", total_small_chunks)
+            colC.metric("Original Length", f"{len(result.get('extracted_content', '')):,} chars")
+        
+        # AI Analysis metrics (UPDATED for single request)
+        if ai_result and ai_result.get('success'):
+            st.markdown("#### AI Analysis Performance")
+            processing_time = ai_result.get('processing_time', 0)
+            
+            colD, colE, colF = st.columns(3)
+            colD.metric("Processing Time", f"{processing_time:.2f}s")
+            colE.metric("Analysis Mode", "Single Request")
+            colF.metric("API Calls", "1")
+            
+            # Performance insights
+            if processing_time > 0 and len(big_chunks) > 0:
+                avg_time_per_chunk = processing_time / len(big_chunks)
+                efficiency = "Excellent" if processing_time < 60 else "Good" if processing_time < 180 else "Slow"
+                st.info(f"📊 **Performance**: {avg_time_per_chunk:.2f}s per section | Efficiency: {efficiency}")
+        
+    except Exception as e:
+        st.warning(f"Could not parse JSON for statistics: {e}")
+    
+    # Show source information
+    if input_mode == "🌐 URL Input":
+        source_info = result.get('url', 'Unknown URL')
+        st.info(f"**Source**: {source_info}")
+    elif input_mode == "📄 Direct JSON":
+        st.info("**Source**: Direct JSON Input")
+    elif input_mode == "📝 Raw Content":
+        st.info("**Source**: Raw Content → Chunked via Dejan Service")
+
+
 def create_results_tabs(result: Dict[str, Any], ai_result: Optional[Dict[str, Any]] = None):
     """
     Create results display tabs.
-    Enhanced to show appropriate context for URL vs Direct JSON vs Raw Content inputs.
+    UPDATED: Single request architecture tab structure
     """
-    # Show freshness indicator before tabs
-    if ai_result and ai_result.get('success'):
-        create_content_freshness_indicator(result, ai_result)
     if ai_result and ai_result.get('success'):
         # With AI analysis results
-        tab1, tab2, tab3, tab4, tab5, = st.tabs([
+        tab1, tab2, tab3, tab4, tab5 = st.tabs([
             "🎯 AI Compliance Report", 
-            "📊 Individual Analyses", 
+            "📊 Analysis Details", 
             "🔧 JSON Output", 
             "📄 Source Content", 
             "📈 Summary",
         ])
+        
         with tab1:
             _create_ai_report_tab(ai_result, result)
         with tab2:
@@ -505,17 +715,30 @@ def create_results_tabs(result: Dict[str, Any], ai_result: Optional[Dict[str, An
             _create_summary_tab(result, ai_result)
     else:
         # Without AI analysis results
-        tab1, tab2, tab3, = st.tabs([
+        tab1, tab2, tab3 = st.tabs([
             "🎯 JSON Output", 
             "📄 Source Content", 
             "📈 Summary",
         ])
+        
         with tab1:
             _create_json_tab(result)
         with tab2:
             _create_content_tab(result)
         with tab3:
             _create_summary_tab(result)
+
+
+# UNCHANGED FUNCTIONS (keeping as-is):
+# - create_page_header()
+# - create_sidebar_config() 
+# - create_how_it_works_section()
+# - create_dual_input_section()
+# - _create_content_tab()
+# - _create_json_tab()
+# - display_error_message()
+# - display_success_message()
+# - All other helper functions
 def _create_content_tab(result: Dict[str, Any]):
     """
     Create source content tab content.

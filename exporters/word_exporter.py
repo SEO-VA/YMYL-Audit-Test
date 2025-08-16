@@ -30,21 +30,7 @@ class WordExporter:
     - Proper heading hierarchy
     - Clean bullet point formatting
     """
-    def _add_formatted_text_to_paragraph(self, paragraph, text):
-    """Add text with embedded bold formatting to a paragraph."""
-    import re
-    # Split text by bold markers
-    parts = re.split(r'(\*\*.*?\*\*)', text)
     
-    for part in parts:
-        if part.startswith('**') and part.endswith('**') and len(part) > 4:
-            # Bold text
-            run = paragraph.add_run(part[2:-2])
-            run.bold = True
-        elif part:
-            # Regular text
-            paragraph.add_run(part)
-
     def __init__(self):
         """Initialize the Word exporter."""
         logger.info("WordExporter initialized")
@@ -550,4 +536,19 @@ class WordExporter:
                 'error': str(e)
             }
 
+        def _add_formatted_text_to_paragraph(self, paragraph, text):
+        """Add text with embedded bold formatting to a paragraph."""
+        import re
+        # Split text by bold markers
+        parts = re.split(r'(\*\*.*?\*\*)', text)
+        
+        for part in parts:
+            if part.startswith('**') and part.endswith('**') and len(part) > 4:
+                # Bold text
+                run = paragraph.add_run(part[2:-2])
+                run.bold = True
+            elif part:
+                # Regular text
+                paragraph.add_run(part)
+                
 logger.debug("WordExporter initialized")

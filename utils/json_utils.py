@@ -523,9 +523,9 @@ def get_chunk_statistics(json_data: Dict[str, Any]) -> Dict[str, Any]:
 def convert_violations_json_to_readable(json_content: str) -> str:
     """
     Convert JSON violations format to human-readable markdown.
-    Now supports the new content_name field from AI prompt.
+    Now supports the new content_name field from AI prompt AND the new explanation field.
     
-    ENHANCED: Safe Unicode handling
+    ENHANCED: Safe Unicode handling + explanation field support
     
     Args:
         json_content (str): JSON string with violations
@@ -549,6 +549,7 @@ def convert_violations_json_to_readable(json_content: str) -> str:
         for i, violation in enumerate(violations, 1):
             severity_emoji = {
                 "critical": "🔴",
+                "high": "🟠",     # Added high severity support
                 "medium": "🟡", 
                 "low": "🔵"
             }.get(violation.get("severity", "medium"), "🟡")
@@ -560,10 +561,14 @@ def convert_violations_json_to_readable(json_content: str) -> str:
             suggested_rewrite = clean_surrogate_pairs(str(violation.get('suggested_rewrite', 'No suggestion provided')))
             rewrite_translation = clean_surrogate_pairs(str(violation.get('rewrite_translation', 'N/A')))
             
+            # NEW: Handle the explanation field
+            explanation = clean_surrogate_pairs(str(violation.get('explanation', 'No explanation provided')))
+            
             violation_text = f"""**{severity_emoji} Violation {i}**
 - **Issue:** {violation_type}
 - **Problematic Text:** "{problematic_text}"
 - **Translation:** "{translation}"
+- **Explanation:** {explanation}
 - **Guideline Reference:** Section {violation.get('guideline_section', 'N/A')} (Page {violation.get('page_number', 'N/A')})
 - **Severity:** {violation.get('severity', 'medium').title()}
 - **Suggested Fix:** "{suggested_rewrite}"
@@ -584,7 +589,7 @@ def create_grouped_violations_report(analysis_results: list) -> str:
     """
     Create a violations report grouped by content sections using content_name.
     
-    ENHANCED: Safe Unicode handling throughout
+    ENHANCED: Safe Unicode handling throughout + explanation field support
     
     Args:
         analysis_results (list): List of chunk analysis results from AI
@@ -610,9 +615,17 @@ def create_grouped_violations_report(analysis_results: list) -> str:
                 content_name = clean_surrogate_pairs(str(ai_response.get('content_name', f'Content Section {chunk_idx}')))
                 violations = ai_response.get('violations', [])
                 
+                # NEW: Also extract explanation if available at the top level
+                section_explanation = ai_response.get('explanation', '')
+                
                 # Only add section if it has violations
                 if violations:
                     readable_parts.append(f"## {content_name}\n\n")
+                    
+                    # Add section-level explanation if available
+                    if section_explanation and section_explanation != 'No explanation provided':
+                        clean_explanation = clean_surrogate_pairs(str(section_explanation))
+                        readable_parts.append(f"**Analysis Overview:** {clean_explanation}\n\n")
                     
                     # Convert violations for this section
                     violations_content = convert_violations_json_to_readable(result['content'])

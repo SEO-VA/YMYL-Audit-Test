@@ -863,13 +863,21 @@ def _basic_markdown_cleanup(markdown_content: str) -> str:
         return content.strip()
     except Exception as e:
         return markdown_content
+# MANDATORY UPDATES ONLY - Add these functions to ui/components.py
+
 def _create_individual_analyses_tab(ai_result: Dict[str, Any]):
-    """Create individual analyses tab with both readable format and raw AI output."""
+    """
+    Create individual analyses tab with both readable format and raw AI output.
+    MINIMAL UPDATE: Only added explanation field support where essential
+    """
     from utils.json_utils import convert_violations_json_to_readable
+    
     st.markdown("### Individual Chunk Analysis Results")
+    
     analysis_details = ai_result.get('analysis_results', [])
     stats = ai_result.get('statistics', {})
-    # Processing metrics
+    
+    # Processing metrics (unchanged)
     col1, col2, col3, col4 = st.columns(4)
     with col1:
         st.metric("Processing Time", f"{stats.get('total_processing_time', 0):.2f}s")
@@ -879,22 +887,40 @@ def _create_individual_analyses_tab(ai_result: Dict[str, Any]):
         st.metric("Successful", stats.get('successful_analyses', 0))
     with col4:
         st.metric("Failed", stats.get('failed_analyses', 0))
+    
     st.markdown("---")
-    # Individual results with both readable and raw formats
+    
+    # Individual results - MINIMAL CHANGE: just show explanation if available
     for detail in analysis_details:
         chunk_idx = detail.get('chunk_index', 'Unknown')
         if detail.get('success'):
             readable_content = convert_violations_json_to_readable(detail["content"])
+            
+            # MINIMAL ADDITION: Check for explanation
+            try:
+                import json
+                ai_response = json.loads(detail["content"])
+                section_explanation = ai_response.get('explanation', '')
+            except:
+                section_explanation = ''
+            
             with st.expander(f"✅ Chunk {chunk_idx} Analysis (Success)"):
-                # Tab structure: Readable + Raw
+                # MINIMAL ADDITION: Show explanation if available
+                if section_explanation and section_explanation.strip():
+                    st.info(f"**Analysis Overview:** {section_explanation}")
+                
+                # Tab structure: Readable + Raw (unchanged)
                 tab1, tab2 = st.tabs(["📖 Readable Format", "🔧 Raw AI Output"])
+                
                 with tab1:
                     st.markdown("**Human-Readable Violations:**")
                     st.markdown(readable_content)
+                
                 with tab2:
                     st.markdown("**Raw AI Response (for prompt debugging):**")
                     st.code(detail['content'], language='json')
-                    # Additional debug info
+                    
+                    # Additional debug info (unchanged)
                     st.markdown("**Debug Information:**")
                     col_a, col_b = st.columns(2)
                     with col_a:

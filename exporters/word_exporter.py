@@ -124,7 +124,7 @@ class WordExporter:
     def _parse_markdown_content(self, doc: Document, markdown_content: str):
         """
         Parse markdown content and add to document.
-        FIXED: Better Google Docs compatibility with proper paragraph handling
+        ENHANCED: Better handling of explanation fields and improved Google Docs compatibility
         
         Args:
             doc (Document): Word document
@@ -192,8 +192,14 @@ class WordExporter:
             elif line.startswith('- ') or line.startswith('* '):
                 # Bullet points - use built-in List Bullet style
                 bullet_text = line[2:]
-                # Handle bolded parts within bullet points
-                if '**' in bullet_text:
+                
+                # ENHANCED: Special handling for explanation lines
+                if '**Explanation:**' in bullet_text:
+                    # Create explanation with special formatting
+                    p = doc.add_paragraph(style='List Bullet')
+                    self._add_explanation_formatted_text(p, bullet_text)
+                elif '**' in bullet_text:
+                    # Handle other bolded parts within bullet points
                     p = doc.add_paragraph(style='List Bullet')
                     self._add_formatted_text_to_paragraph(p, bullet_text)
                 else:
@@ -212,6 +218,11 @@ class WordExporter:
                 # Severity indicators - handle with proper formatting
                 p = doc.add_paragraph()
                 self._add_severity_formatted_text(p, line)
+                
+            elif line.startswith('**Analysis Overview:**'):
+                # NEW: Special handling for analysis overview/explanation sections
+                p = doc.add_paragraph()
+                self._add_analysis_overview_text(p, line)
                         
             else:
                 # Regular paragraph
@@ -226,32 +237,82 @@ class WordExporter:
                         style_name = 'Processing Summary' if in_processing_summary else 'Normal'
                         doc.add_paragraph(line, style=style_name)
 
-    def _add_formatted_text_to_paragraph(self, paragraph, text):
+    def _add_explanation_formatted_text(self, paragraph, text):
         """
-        Add text with embedded bold formatting to a paragraph.
-        Handles **bold** markers properly for Google Docs compatibility.
+        Add explanation text with special formatting for Google Docs compatibility.
+        NEW: Handles the explanation field with enhanced styling
         """
-        # Split text by bold markers
-        parts = re.split(r'(\*\*.*?\*\*)', text)
+        # Split by the explanation marker
+        if '**Explanation:**' in text:
+            parts = text.split('**Explanation:**', 1)
+            
+            # Add the label part
+            if parts[0].strip():
+                paragraph.add_run(parts[0].strip() + ' ')
+            
+            # Add "Explanation:" in bold
+            explanation_label = paragraph.add_run('Explanation:')
+            explanation_label.bold = True
+            explanation_label.font.color.rgb = RGBColor(54, 95, 145)  # Professional blue
+            
+            # Add the explanation content
+            if len(parts) > 1 and parts[1].strip():
+                explanation_content = paragraph.add_run(' ' + parts[1].strip())
+                explanation_content.font.italic = True
+                explanation_content.font.color.rgb = RGBColor(68, 68, 68)  # Dark gray
+        else:
+            # Fallback to normal formatting
+            self._add_formatted_text_to_paragraph(paragraph, text)
+
+    def _add_analysis_overview_text(self, paragraph, text):
+        """
+        Add analysis overview text with special formatting.
+        NEW: Handles section-level explanations
+        """
+        # Split by the overview marker
+        if '**Analysis Overview:**' in text:
+            parts = text.split('**Analysis Overview:**', 1)
+            
+            # Add "Analysis Overview:" in bold with special color
+            overview_label = paragraph.add_run('Analysis Overview:')
+            overview_label.bold = True
+            overview_label.font.color.rgb = RGBColor(46, 125, 50)  # Professional green
+            overview_label.font.size = Pt(12)  # Slightly larger
+            
+            # Add the overview content
+            if len(parts) > 1 and parts[1].strip():
+                overview_content = paragraph.add_run(' ' + parts[1].strip())
+                overview_content.font.italic = True
+                overview_content.font.color.rgb = RGBColor(33, 33, 33)  # Dark text
+                
+            # Add some spacing after overview
+            paragraph.paragraph_format.space_after = Pt(8)
+        else:
+            # Fallback to normal formatting
+            self._add_formatted_text_to_paragraph(paragraph, text)
+
+    def _contains_severity_indicator(self, line: str) -> bool:
+        """
+        Check if line contains severity indicators.
+        ENHANCED: Added high severity support
         
-        for part in parts:
-            if part.startswith('**') and part.endswith('**') and len(part) > 4:
-                # Bold text
-                run = paragraph.add_run(part[2:-2])
-                run.bold = True
-            elif part:
-                # Regular text
-                paragraph.add_run(part)
+        Args:
+            line (str): Line to check
+            
+        Returns:
+            bool: True if contains severity indicators
+        """
+        return any(indicator in line for indicator in ['🔴', '🟠', '🟡', '🔵', '✅', '❌'])
 
     def _add_severity_formatted_text(self, paragraph, text):
         """
         Add severity indicator text with proper formatting and color.
-        FIXED: Replace emojis with text for better Google Docs compatibility
+        ENHANCED: Replace emojis with text for better Google Docs compatibility + high severity
         """
         # Replace emoji with text for better Word/Google Docs compatibility
         emoji_replacements = {
             '🔴': '[CRITICAL]',
-            '🟠': '[HIGH]', 
+            '🟠': '[HIGH]',      # NEW: Added high severity
             '🟡': '[MEDIUM]',
             '🔵': '[LOW]',
             '✅': '[✓]',
@@ -270,7 +331,7 @@ class WordExporter:
                 if emoji == '🔴':
                     severity_color = RGBColor(231, 76, 60)  # Red
                 elif emoji == '🟠':
-                    severity_color = RGBColor(230, 126, 34)  # Orange
+                    severity_color = RGBColor(255, 152, 0)  # Orange - NEW
                 elif emoji == '🟡':
                     severity_color = RGBColor(243, 156, 18)  # Yellow/Gold
                 elif emoji == '🔵':

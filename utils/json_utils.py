@@ -252,6 +252,81 @@ def convert_ai_response_to_markdown(ai_response: List[Dict[str, Any]]) -> str:
         return f"❌ **Error**: Failed to process AI response - {str(e)}"
 
 
+def convert_violations_json_to_readable(json_content: str) -> str:
+    """
+    Convert JSON violations format to human-readable markdown.
+    COMPATIBILITY: For UI components that still expect this function
+    """
+    try:
+        violations_data = safe_json_loads(json_content)
+        if violations_data is None:
+            return "❌ **Could not parse violations data.**\n\n"
+        
+        # Handle both old format (single chunk) and new format (array)
+        if isinstance(violations_data, list):
+            # New format - convert first item only for compatibility
+            if violations_data and len(violations_data) > 0:
+                violations = violations_data[0].get("violations", [])
+            else:
+                violations = []
+        else:
+            # Old format - single chunk
+            violations = violations_data.get("violations", [])
+        
+        if not violations or violations == "no violation found":
+            return "✅ **No violations found in this section.**\n\n"
+        
+        readable_parts = []
+        
+        for i, violation in enumerate(violations, 1):
+            severity_emoji = {
+                "critical": "🔴",
+                "high": "🟠",
+                "medium": "🟡", 
+                "low": "🔵"
+            }.get(violation.get("severity", "medium"), "🟡")
+            
+            # Clean all text fields
+            violation_type = clean_surrogate_pairs(str(violation.get('violation_type', 'Unknown violation')))
+            problematic_text = clean_surrogate_pairs(str(violation.get('problematic_text', 'N/A')))
+            explanation = clean_surrogate_pairs(str(violation.get('explanation', 'No explanation provided')))
+            suggested_rewrite = clean_surrogate_pairs(str(violation.get('suggested_rewrite', 'No suggestion provided')))
+            
+            # Handle translation fields
+            translation = violation.get('translation', '')
+            rewrite_translation = violation.get('rewrite_translation', '')
+            
+            violation_text = f"""**{severity_emoji} Violation {i}**
+- **Issue:** {violation_type}
+- **Problematic Text:** "{problematic_text}"
+"""
+            
+            # Add translation if present
+            if translation:
+                clean_translation = clean_surrogate_pairs(str(translation))
+                violation_text += f"- **Translation:** \"{clean_translation}\"\n"
+            
+            violation_text += f"""- **Explanation:** {explanation}
+- **Guideline Reference:** Section {violation.get('guideline_section', 'N/A')} (Page {violation.get('page_number', 'N/A')})
+- **Severity:** {violation.get('severity', 'medium').title()}
+- **Suggested Fix:** "{suggested_rewrite}"
+"""
+            
+            # Add rewrite translation if present
+            if rewrite_translation:
+                clean_rewrite_translation = clean_surrogate_pairs(str(rewrite_translation))
+                violation_text += f"- **Translation of Fix:** \"{clean_rewrite_translation}\"\n"
+            
+            violation_text += "\n"
+            readable_parts.append(violation_text)
+        
+        return ''.join(readable_parts)
+        
+    except Exception as e:
+        logger.error(f"Error converting JSON to readable format: {e}")
+        return clean_surrogate_pairs(str(json_content)) + "\n\n"
+
+
 def get_display_json_string(json_data: Union[Dict[str, Any], str]) -> str:
     """Get clean JSON string for UI display."""
     try:
@@ -374,85 +449,6 @@ def _create_display_version(json_data: Dict[str, Any]) -> Dict[str, Any]:
     return display_data
 
 
-# REMOVED FUNCTIONS (no longer needed):
-# - extract_big_chunks() - AI processes full content
-# - convert_violations_json_to_readable() - replaced by convert_ai_response_to_markdown()
-# - create_grouped_violations_report() - AI handles organization
-
-def convert_violations_json_to_readable(json_content: str) -> str:
-    """
-    Convert JSON violations format to human-readable markdown.
-    COMPATIBILITY: For UI components that still expect this function
-    """
-    try:
-        violations_data = safe_json_loads(json_content)
-        if violations_data is None:
-            return "❌ **Could not parse violations data.**\n\n"
-        
-        # Handle both old format (single chunk) and new format (array)
-        if isinstance(violations_data, list):
-            # New format - convert first item only for compatibility
-            if violations_data and len(violations_data) > 0:
-                violations = violations_data[0].get("violations", [])
-            else:
-                violations = []
-        else:
-            # Old format - single chunk
-            violations = violations_data.get("violations", [])
-        
-        if not violations or violations == "no violation found":
-            return "✅ **No violations found in this section.**\n\n"
-        
-        readable_parts = []
-        
-        for i, violation in enumerate(violations, 1):
-            severity_emoji = {
-                "critical": "🔴",
-                "high": "🟠",
-                "medium": "🟡", 
-                "low": "🔵"
-            }.get(violation.get("severity", "medium"), "🟡")
-            
-            # Clean all text fields
-            violation_type = clean_surrogate_pairs(str(violation.get('violation_type', 'Unknown violation')))
-            problematic_text = clean_surrogate_pairs(str(violation.get('problematic_text', 'N/A')))
-            explanation = clean_surrogate_pairs(str(violation.get('explanation', 'No explanation provided')))
-            suggested_rewrite = clean_surrogate_pairs(str(violation.get('suggested_rewrite', 'No suggestion provided')))
-            
-            # Handle translation fields
-            translation = violation.get('translation', '')
-            rewrite_translation = violation.get('rewrite_translation', '')
-            
-            violation_text = f"""**{severity_emoji} Violation {i}**
-- **Issue:** {violation_type}
-- **Problematic Text:** "{problematic_text}"
-"""
-            
-            # Add translation if present
-            if translation:
-                clean_translation = clean_surrogate_pairs(str(translation))
-                violation_text += f"- **Translation:** \"{clean_translation}\"\n"
-            
-            violation_text += f"""- **Explanation:** {explanation}
-- **Guideline Reference:** Section {violation.get('guideline_section', 'N/A')} (Page {violation.get('page_number', 'N/A')})
-- **Severity:** {violation.get('severity', 'medium').title()}
-- **Suggested Fix:** "{suggested_rewrite}"
-"""
-            
-            # Add rewrite translation if present
-            if rewrite_translation:
-                clean_rewrite_translation = clean_surrogate_pairs(str(rewrite_translation))
-                violation_text += f"- **Translation of Fix:** \"{clean_rewrite_translation}\"\n"
-            
-            violation_text += "\n"
-            readable_parts.append(violation_text)
-        
-        return ''.join(readable_parts)
-        
-    except Exception as e:
-        logger.error(f"Error converting JSON to readable format: {e}")
-        return clean_surrogate_pairs(str(json_content)) + "\n\n"
-
 __all__ = [
     'decode_unicode_escapes',
     'clean_surrogate_pairs',
@@ -460,7 +456,7 @@ __all__ = [
     'safe_json_loads',
     'parse_json_output',
     'convert_ai_response_to_markdown',
-    'convert_violations_json_to_readable',  # ADD THIS LINE
+    'convert_violations_json_to_readable',  # ADDED
     'get_display_json_string',
     'validate_chunk_structure'
 ]

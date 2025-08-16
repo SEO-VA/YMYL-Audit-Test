@@ -536,18 +536,4 @@ class WordExporter:
                 'error': str(e)
             }
 
-        def _add_formatted_text_to_paragraph(self, paragraph, text):
-        import re
-        # Split text by bold markers
-        parts = re.split(r'(\*\*.*?\*\*)', text)
-        
-        for part in parts:
-            if part.startswith('**') and part.endswith('**') and len(part) > 4:
-                # Bold text
-                run = paragraph.add_run(part[2:-2])
-                run.bold = True
-            elif part:
-                # Regular text
-                paragraph.add_run(part)
-
 logger.debug("WordExporter initialized")

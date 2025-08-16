@@ -20,7 +20,7 @@ logger = setup_logger(__name__)
 
 
 class WordExporter:
-    a
+    
     def _add_formatted_text_to_paragraph(self, paragraph, text):
         """Add text with embedded bold formatting to a paragraph."""
         import re

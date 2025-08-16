@@ -5,7 +5,7 @@ Chunk Processor for YMYL Audit Tool
 Handles automated interaction with chunk.dejan.ai to process content into chunks.
 Uses Selenium WebDriver for browser automation.
 
-FIXED: Removed duplicate decode function, imports from json_utils
+ENHANCED: Improved Unicode handling to prevent surrogate pair errors
 """
 
 import time
@@ -25,7 +25,7 @@ from config.settings import (
     MAX_CONTENT_LENGTH
 )
 from utils.logging_utils import setup_logger, format_processing_step
-from utils.json_utils import decode_unicode_escapes  # FIXED: Import from centralized location
+from utils.json_utils import decode_unicode_escapes, clean_surrogate_pairs  # ENHANCED: Import new functions
 
 logger = setup_logger(__name__)
 
@@ -39,6 +39,7 @@ class ChunkProcessor:
     - Content submission to chunking service
     - Result extraction and JSON parsing
     - Error handling and cleanup
+    - Unicode surrogate pair handling
     """
     
     def __init__(self, log_callback: Optional[Callable[[str], None]] = None):
@@ -146,6 +147,8 @@ class ChunkProcessor:
         """
         Submit content to the chunking service.
         
+        ENHANCED: Improved Unicode handling to prevent surrogate errors
+        
         Args:
             content (str): Content to be chunked
             
@@ -159,11 +162,51 @@ class ChunkProcessor:
                 self._log(error_msg, "error")
                 return False
             
+            # ENHANCED: Clean Unicode before processing
+            self._log("Cleaning Unicode characters in content", "in_progress")
+            cleaned_content = clean_surrogate_pairs(content)
+            
+            if cleaned_content != content:
+                char_diff = len(content) - len(cleaned_content)
+                self._log(f"Unicode cleaning applied: {char_diff} problematic characters handled", "info")
+            
             wait = WebDriverWait(self.driver, SELENIUM_SHORT_TIMEOUT)
             
-            # Step 1: Copy content to clipboard
+            # Step 1: Copy content to clipboard with safe encoding
             self._log("Using JavaScript to copy content to clipboard", "in_progress")
-            self.driver.execute_script("navigator.clipboard.writeText(arguments[0]);", content)
+            
+            # ENHANCED: Use safe JavaScript string escaping
+            try:
+                # Escape the content for JavaScript (handle quotes, newlines, etc.)
+                js_escaped_content = (
+                    cleaned_content
+                    .replace('\\', '\\\\')  # Escape backslashes
+                    .replace('`', '\\`')    # Escape backticks
+                    .replace('$', '\\$')    # Escape dollar signs
+                    .replace('\n', '\\n')   # Escape newlines
+                    .replace('\r', '\\r')   # Escape carriage returns
+                    .replace('\t', '\\t')   # Escape tabs
+                )
+                
+                # Use template literal for better Unicode support
+                js_code = f"navigator.clipboard.writeText(`{js_escaped_content}`);"
+                self.driver.execute_script(js_code)
+                
+                self._log("Content copied to clipboard successfully", "success")
+                
+            except Exception as clipboard_error:
+                self._log(f"Clipboard copy failed: {clipboard_error}", "warning")
+                
+                # Fallback: Try with JSON.stringify for safe escaping
+                try:
+                    import json
+                    json_escaped = json.dumps(cleaned_content)
+                    js_code = f"navigator.clipboard.writeText({json_escaped});"
+                    self.driver.execute_script(js_code)
+                    self._log("Content copied using JSON fallback method", "success")
+                except Exception as json_error:
+                    self._log(f"JSON fallback also failed: {json_error}", "error")
+                    return False
             
             # Step 2: Locate and clear textarea
             self._log("Locating text area and clearing it", "in_progress")
@@ -178,6 +221,29 @@ class ChunkProcessor:
             
             # Brief wait to ensure paste completes
             time.sleep(1)
+            
+            # ENHANCED: Verify paste worked by checking field content
+            try:
+                pasted_text = input_field.get_attribute('value')
+                if not pasted_text or len(pasted_text) < len(cleaned_content) * 0.9:
+                    self._log("Paste verification failed - trying direct input", "warning")
+                    
+                    # Fallback: Direct text input (slower but more reliable)
+                    input_field.clear()
+                    # Send in smaller chunks to avoid issues
+                    chunk_size = 1000
+                    for i in range(0, len(cleaned_content), chunk_size):
+                        chunk = cleaned_content[i:i + chunk_size]
+                        input_field.send_keys(chunk)
+                        time.sleep(0.1)  # Small delay between chunks
+                    
+                    self._log("Content entered using direct input method", "success")
+                else:
+                    self._log("Paste verification successful", "success")
+                    
+            except Exception as verify_error:
+                self._log(f"Paste verification failed: {verify_error}", "warning")
+                # Continue anyway, the paste might have worked
             
             # Step 4: Submit
             self._log("Clicking submit button", "in_progress")
@@ -232,7 +298,7 @@ class ChunkProcessor:
         """
         Extract JSON output from the copy button and decode Unicode escapes.
         
-        FIXED: Uses centralized Unicode decoding function
+        ENHANCED: Better Unicode handling with surrogate pair safety
         
         Returns:
             str or None: Extracted and decoded JSON content or None if failed
@@ -267,13 +333,31 @@ class ChunkProcessor:
                 logger.error(error_msg)
                 return None
             
-            # Decode HTML entities
+            # ENHANCED: Safe HTML entity decoding
             self._log("Decoding HTML entities", "in_progress")
-            decoded_content = html.unescape(final_content)
+            try:
+                decoded_content = html.unescape(final_content)
+            except Exception as html_error:
+                self._log(f"HTML decoding failed: {html_error}", "warning")
+                decoded_content = final_content
             
-            # FIXED: Use centralized Unicode decoding function
-            self._log("Decoding Unicode escapes", "in_progress")
-            decoded_content = decode_unicode_escapes(decoded_content)
+            # ENHANCED: Safe Unicode decoding with surrogate handling
+            self._log("Decoding Unicode escapes safely", "in_progress")
+            try:
+                decoded_content = decode_unicode_escapes(decoded_content)
+                
+                # Additional safety: clean any remaining surrogates
+                final_decoded = clean_surrogate_pairs(decoded_content)
+                
+                if final_decoded != decoded_content:
+                    self._log("Additional Unicode cleaning applied", "info")
+                
+                decoded_content = final_decoded
+                
+            except Exception as unicode_error:
+                self._log(f"Unicode decoding failed: {unicode_error}", "warning")
+                # Use the HTML-decoded version as fallback
+                decoded_content = clean_surrogate_pairs(decoded_content)
             
             # Log decoding results for debugging
             if '\\u' in final_content:
@@ -285,6 +369,16 @@ class ChunkProcessor:
                     logger.info("Unicode decoding successful - all sequences converted")
                 else:
                     logger.warning(f"Unicode decoding incomplete - {remaining_count} sequences remain")
+            
+            # ENHANCED: Validate the final content can be safely encoded
+            try:
+                decoded_content.encode('utf-8')
+                self._log("UTF-8 encoding validation passed", "success")
+            except UnicodeEncodeError as encoding_error:
+                self._log(f"UTF-8 encoding validation failed: {encoding_error}", "error")
+                # Apply final cleaning
+                decoded_content = decoded_content.encode('utf-8', errors='replace').decode('utf-8')
+                self._log("Applied replacement encoding for safety", "warning")
             
             self._log(f"Extraction complete. Retrieved {len(decoded_content):,} characters", "success")
             logger.info(f"Successfully extracted and decoded JSON: {len(decoded_content):,} characters")
@@ -306,6 +400,8 @@ class ChunkProcessor:
         """
         Process content through the complete chunking workflow.
         
+        ENHANCED: Better Unicode error handling throughout
+        
         Args:
             content (str): Content to be processed
             
@@ -314,11 +410,22 @@ class ChunkProcessor:
         """
         logger.info(f"Starting chunk processing for content ({len(content):,} characters)")
         
-        # Validate input
+        # ENHANCED: Validate and clean input content
         if not content or not content.strip():
             error_msg = "Cannot process empty content"
             self._log(error_msg, "error")
             return False, None, error_msg
+        
+        # Pre-clean the content for Unicode issues
+        try:
+            cleaned_input = clean_surrogate_pairs(content)
+            if cleaned_input != content:
+                char_diff = len(content) - len(cleaned_input)
+                logger.info(f"Pre-cleaned {char_diff} problematic Unicode characters from input")
+            content = cleaned_input
+        except Exception as clean_error:
+            logger.warning(f"Input cleaning failed: {clean_error}")
+            # Continue with original content
         
         # Setup browser
         if not self._setup_driver():
@@ -341,6 +448,25 @@ class ChunkProcessor:
             json_output = self._extract_json_from_button()
             if not json_output:
                 return False, None, "Failed to extract JSON from results page"
+            
+            # ENHANCED: Final validation of output
+            try:
+                # Test that the output can be safely used
+                json_output.encode('utf-8')
+                import json
+                json.loads(json_output)  # Validate it's proper JSON
+                
+                self._log("Final validation passed - output is safe and valid", "success")
+                
+            except UnicodeEncodeError as encoding_error:
+                self._log(f"Final encoding validation failed: {encoding_error}", "error")
+                return False, None, "Output contains unsafe Unicode characters"
+            except json.JSONDecodeError as json_error:
+                self._log(f"Final JSON validation failed: {json_error}", "error")
+                return False, None, "Output is not valid JSON"
+            except Exception as validation_error:
+                self._log(f"Final validation failed: {validation_error}", "error")
+                return False, None, f"Output validation failed: {validation_error}"
             
             self._log("Chunk processing completed successfully", "success")
             logger.info("Chunk processing workflow completed successfully")
@@ -386,6 +512,61 @@ class ChunkProcessor:
             'current_url': self.driver.current_url if self.driver else None,
             'page_title': self.driver.title if self.driver else None
         }
+
+    def validate_unicode_safety(self, text: str) -> dict:
+        """
+        Validate that text is safe for processing (no surrogate pairs).
+        
+        Args:
+            text (str): Text to validate
+            
+        Returns:
+            dict: Validation results
+        """
+        try:
+            results = {
+                'is_safe': True,
+                'can_encode_utf8': True,
+                'has_surrogates': False,
+                'unicode_escape_count': text.count('\\u'),
+                'original_length': len(text),
+                'errors': []
+            }
+            
+            # Test UTF-8 encoding
+            try:
+                text.encode('utf-8')
+            except UnicodeEncodeError as e:
+                results['is_safe'] = False
+                results['can_encode_utf8'] = False
+                results['errors'].append(f"UTF-8 encoding error: {e}")
+            
+            # Check for surrogates in Unicode escapes
+            import re
+            unicode_matches = re.findall(r'\\u([0-9a-fA-F]{4})', text)
+            surrogate_count = 0
+            
+            for match in unicode_matches:
+                code_point = int(match, 16)
+                if 0xD800 <= code_point <= 0xDFFF:
+                    surrogate_count += 1
+            
+            if surrogate_count > 0:
+                results['is_safe'] = False
+                results['has_surrogates'] = True
+                results['errors'].append(f"Found {surrogate_count} surrogate Unicode escapes")
+            
+            return results
+            
+        except Exception as e:
+            return {
+                'is_safe': False,
+                'can_encode_utf8': False,
+                'has_surrogates': False,
+                'unicode_escape_count': 0,
+                'original_length': len(text) if text else 0,
+                'errors': [f"Validation error: {e}"]
+            }
 
     def __enter__(self):
         """Context manager entry."""

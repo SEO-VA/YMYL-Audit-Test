@@ -566,7 +566,7 @@ def validate_analysis_freshness(result: dict, ai_result: dict = None) -> bool:
 async def process_ai_analysis(json_output: str, api_key: str, source_result: dict = None) -> dict:
     """
     Process AI compliance analysis.
-    UPDATED: Single request architecture
+    UPDATED: Single request architecture with import fix
     """
     try:
         logger.info("Starting single-request AI analysis workflow")
@@ -582,11 +582,15 @@ async def process_ai_analysis(json_output: str, api_key: str, source_result: dic
         if not json_data:
             return {'success': False, 'error': 'Failed to parse JSON content'}
         
-        # Validate content size
+        # Validate content size - FIXED: Use fallback if import fails
         json_string = json.dumps(json_data) if isinstance(json_data, dict) else json_output
         content_size = len(json_string)
         
-        from config.settings import MAX_CONTENT_SIZE_FOR_AI
+        try:
+            from config.settings import MAX_CONTENT_SIZE_FOR_AI
+        except ImportError:
+            MAX_CONTENT_SIZE_FOR_AI = 2000000  # 2MB fallback
+        
         if content_size > MAX_CONTENT_SIZE_FOR_AI:
             return {
                 'success': False, 

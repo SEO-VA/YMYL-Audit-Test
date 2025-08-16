@@ -537,7 +537,6 @@ class WordExporter:
             }
 
         def _add_formatted_text_to_paragraph(self, paragraph, text):
-        """Add text with embedded bold formatting to a paragraph."""
         import re
         # Split text by bold markers
         parts = re.split(r'(\*\*.*?\*\*)', text)
@@ -550,5 +549,5 @@ class WordExporter:
             elif part:
                 # Regular text
                 paragraph.add_run(part)
-                
+
 logger.debug("WordExporter initialized")

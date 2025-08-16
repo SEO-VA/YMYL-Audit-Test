@@ -174,6 +174,7 @@ def convert_ai_response_to_markdown(ai_response: List[Dict[str, Any]]) -> str:
                 
                 # Handle "no violation found" case
                 if violations == "no violation found" or not violations:
+                    report_parts.append(f"## {content_name}\n\n✅ **No violations found in this section.**\n\n")
                     continue
                 
                 # Add section header
